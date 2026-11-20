@@ -1,0 +1,101 @@
+import { test, expect, chromium } from "@playwright/test";
+const origin = process.env.LEDGER_TEST_URL || "http://127.0.0.1:4173";
+test("手机端录入、跨年查看、编辑、备份、汇款、汇总与离线重开", async () => {
+  const browser = await chromium.launch(
+    process.env.CHROMIUM_PATH
+      ? { executablePath: process.env.CHROMIUM_PATH }
+      : {},
+  );
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 375, height: 720 },
+      acceptDownloads: true,
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("dialog", (d) => d.accept());
+    const click = (action) =>
+      page.locator('[data-action="' + action + '"]').click();
+    const book = (k) => page.locator('[data-book="' + k + '"]').click();
+    const section = (k) => page.locator('[data-page="' + k + '"]').click();
+    const period = (k) => page.locator('[data-period="' + k + '"]').click();
+    const field = (k) => page.locator('[name="' + k + '"]');
+    await page.goto(origin);
+    await expect(page.locator(".home-card")).toHaveCount(3);
+    for (const [kind, value, date] of [
+      ["expense", "1800", "2025-12-31"],
+      ["income", "5000", "2025-12-31"],
+      ["remittance", "1000", "2025-12-31"],
+      ["income", "12", "2026-01-01"],
+    ]) {
+      await book(kind);
+      await section("form");
+      await field("date").fill(date);
+      await field("usd").fill(value);
+      const rect = await field("date").boundingBox();
+      expect(rect.x + rect.width).toBeLessThanOrEqual(375);
+      if (kind === "remittance") {
+        await field("rate").fill("7.2");
+        await expect(field("cny")).toHaveValue("7200.00");
+        await field("cny").fill("7100");
+        await expect(field("rate")).toHaveValue("7.100");
+        await field("cny").fill("7200");
+      }
+      await page.getByRole("button", { name: "保存", exact: true }).click();
+      await expect(page.locator(".home-card")).toHaveCount(3);
+    }
+    await book("summary");
+    await field("month").fill("2025-12");
+    await expect(page.locator(".balance")).toContainText("$2,200.00");
+    await expect(page.locator(".balance")).toContainText("¥7,200.00");
+    await period("year");
+    await field("year").selectOption("2026");
+    await expect(page.locator(".balance")).toContainText("$12.00");
+    await period("all");
+    await expect(page.locator(".balance")).toContainText("$2,212.00");
+    await book("expense");
+    await section("view");
+    await period("year");
+    await field("year").selectOption("2025");
+    await page.locator("summary").click();
+    await click("edit");
+    await field("usd").fill("1801");
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(field("year")).toHaveValue("2025");
+    await expect(page.locator(".stats")).toContainText("$1,801.00");
+    await click("back");
+    await section("export");
+    await click("copy");
+    await expect(page.locator("#site-status")).toContainText("已复制");
+    const downloaded = page.waitForEvent("download");
+    await click("backup");
+    const backup = await downloaded;
+    const path = await backup.path();
+    await field("file").setInputFiles(path);
+    await click("merge");
+    await click("back");
+    await section("view");
+    await page.locator("summary").click();
+    await click("delete");
+    await expect(page.locator(".stats")).toContainText("0 笔");
+    await click("back");
+    await section("export");
+    await click("restore");
+    await click("back");
+    await section("view");
+    await expect(page.locator(".stats")).toContainText("$1,801.00");
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+    await context.setOffline(true);
+    await page.reload();
+    await section("view");
+    await period("all");
+    await expect(page.locator(".stats")).toContainText("$1,801.00");
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

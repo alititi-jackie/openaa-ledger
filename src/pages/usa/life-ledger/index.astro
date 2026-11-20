@@ -1,0 +1,33 @@
+---
+import Header from "../../../components/site/Header.astro";
+import "../../../styles/header.css";
+import "../../../styles/tools/life-ledger.css";
+---
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>生活收支账本｜OpenAA 工具库</title><meta name="robots" content="noindex,follow"/>
+<meta name="theme-color" content="#2563eb"/><link rel="icon" href="/assets/openaa-logo.png"/>
+<link rel="manifest" href="./manifest.json"/><link rel="apple-touch-icon" href="./icon-192.png"/>
+</head><body><Header/><main id="ledger"></main>
+<output id="header-status" role="status" aria-live="polite"></output>
+<script>
+import "../../../features/life-ledger.js";
+document.querySelector("[data-share]")?.addEventListener("click", async ()=>{
+ const url=new URL(".",location.href).href;
+ const status=document.querySelector("#header-status");
+ if(!status)return;
+ try {
+   if(navigator.share){await navigator.share({title:document.title,url});return;}
+   await navigator.clipboard.writeText(url);
+   status.textContent="已复制账本链接";
+ } catch(error){
+   if(error instanceof Error && error.name==="AbortError")return;
+   window.prompt("复制账本链接",url);
+ }
+ setTimeout(()=>status.textContent="",2500);
+});
+if(import.meta.env.PROD && "serviceWorker" in navigator){
+ navigator.serviceWorker.register("./sw.js").catch(()=>{});
+}
+</script></body></html>
