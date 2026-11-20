@@ -385,3 +385,6 @@ legend {
 .transfer-confirm::backdrop { background:#15223466; }
 .transfer-confirm h2 { margin:0; font-size:19px; }
 .transfer-confirm p { white-space:pre-line; line-height:1.6; }
+.install-entry { margin-top:12px; min-height:44px; background:transparent; border:0; padding:8px 4px; color:var(--blue); font-size:15px; }
+.install-guide ol { padding-left:1.5em; line-height:1.65; }
+.install-guide li + li { margin-top:6px; }

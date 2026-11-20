@@ -1,3 +1,4 @@
+import { installLedger, isInstalled } from "../lib/install-ledger.js";
 import {
   normalize,
   totals,
@@ -102,7 +103,7 @@ function home() {
       ([k, v]) =>
         `<button class="home-card" data-page="${k}"><span class="icon ${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">${icons[k]}</svg></span><span><strong>${v}</strong><small>${subtitles[k]}</small></span><span class="chev" aria-hidden="true">›</span></button>`,
     )
-    .join("")}</div>`;
+    .join("")}</div>${button("install", "添加到手机主屏幕", `class="install-entry" ${isInstalled() ? "hidden" : ""}`)}`;
 }
 const input = (name, label, type, value, extra = "") =>
   `<label>${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
@@ -426,6 +427,7 @@ root.addEventListener(
       go(dest);
       return;
     }
+    if (a === "install") return installLedger();
     if (a === "target") {
       target = b.dataset.field;
       calc(root.querySelector("form"));
