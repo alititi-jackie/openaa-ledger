@@ -380,3 +380,8 @@ legend {
 }
 
 .choice-error:not(:empty) { display: block; margin-top: 6px; color: #a02432; }
+#rate-warning:not(:empty) { display:block; margin:-12px 0 18px; color:#9a4600; font-size:14px; }
+.transfer-confirm { width:min(360px,90vw); border:0; border-radius:14px; padding:22px; color:var(--text); }
+.transfer-confirm::backdrop { background:#15223466; }
+.transfer-confirm h2 { margin:0; font-size:19px; }
+.transfer-confirm p { white-space:pre-line; line-height:1.6; }

@@ -9,7 +9,7 @@ import {
   restore,
   xlsx,
 } from "../lib/ledger.js";
-import { FX_FIELDS, calculateFxTarget, roundFx } from "../lib/fx-calculator.js";
+import { FX_FIELDS, calculateFxTarget, roundFx, rateNeedsReview } from "../lib/fx-calculator.js";
 import { showFeedback, copyText, showCopyResult } from "../lib/feedback.js";
 import { shareFileOrDownload } from "../lib/share-file.js";
 
@@ -124,12 +124,12 @@ function form() {
       label,
       "number",
       val,
-      `inputmode="decimal" step="${step}" min="${step}" required`,
+      `inputmode="decimal" step="${step}" min="${step}" required ${name === "rate" ? 'aria-describedby="rate-warning"' : ""}`,
     );
   return `<h1>${editing ? "编辑" : "记一笔"}${names[kind]}</h1><form class="panel">
  ${input("date", "日期", "date", r.date || today(), "required")}
  ${decimal("usd", "美元金额（USD）", r.amount ?? "", 0.01)}
- ${kind === "remittance" ? decimal("rate", "汇率（1 美元兑换人民币）", r.rate?.toFixed(3) ?? "", 0.001) + decimal("cny", "人民币金额（CNY）", r.cny ?? "", 0.01) + `<fieldset><legend>计算哪一项</legend><div class="calc">${FX_FIELDS.map((k) => button("target", fxNames[k], `data-field="${k}"`)).join("")}</div></fieldset>` : radios("method", kind === "income" ? "收款方式" : "支付方式", { cash: "现金", card: "银行卡" }, r.method)}
+ ${kind === "remittance" ? decimal("rate", "汇率（1 美元兑换人民币）", r.rate?.toFixed(3) ?? "", 0.001) + `<small id="rate-warning" aria-live="polite">${rateNeedsReview(r.rate) ? "⚠ 汇率可能有误，请核对。" : ""}</small>` + decimal("cny", "人民币金额（CNY）", r.cny ?? "", 0.01) + `<fieldset><legend>计算哪一项</legend><div class="calc">${FX_FIELDS.map((k) => button("target", fxNames[k], `data-field="${k}"`)).join("")}</div></fieldset>` : radios("method", kind === "income" ? "收款方式" : "支付方式", { cash: "现金", card: "银行卡" }, r.method)}
  ${kind === "expense" ? radios("category", "开支分类", Object.fromEntries([...new Set([...categories, r.category].filter(Boolean))].map((x) => [x, x])), r.category) : ""}
  <label>备注（选填）<textarea name="note" maxlength="10000" rows="2">${escape(r.note)}</textarea></label>
  <div class="controls">${button("cancel", "取消")}<button class="primary" type="submit">保存</button></div></form>`;
@@ -238,12 +238,18 @@ function markTarget() {
       b.setAttribute("aria-pressed", String(b.dataset.field === target)),
     );
 }
+function updateRateWarning(form, defer = false) {
+  const warning = form.querySelector("#rate-warning");
+  const unusual = rateNeedsReview(roundFx(Number(form.elements.rate.value), 3));
+  if (!defer || !unusual) warning.textContent = unusual ? "⚠ 汇率可能有误，请核对。" : "";
+}
 function calc(form) {
   const values = Object.fromEntries(
     FX_FIELDS.map((k) => [k, form.elements[k].value]),
   );
   const n = calculateFxTarget(target, values);
   if (n !== null) form.elements[target].value = n;
+  if (target === "rate") updateRateWarning(form);
   markTarget();
 }
 // Native required groups prevent submission; show a visible reminder beside each missing group.
@@ -275,6 +281,7 @@ root.addEventListener("input", (e) => {
           : { usd: "cny", rate: "cny", cny: "rate" }[field];
     calc(form);
   }
+  updateRateWarning(form, field === "rate");
   lastManual = field;
   markTarget();
 });
@@ -290,6 +297,7 @@ root.addEventListener("focusout", (e) => {
   if (Number.isFinite(v)) {
     e.target.value = v.toFixed(digits);
     if (e.target.name !== target) calc(e.target.form);
+    updateRateWarning(e.target.form);
   }
 });
 function go(next, top = true) {
@@ -317,12 +325,27 @@ function guarded(fn) {
     }
   };
 }
+function confirmTransfer(messages) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "transfer-confirm";
+  dialog.setAttribute("aria-labelledby", "transfer-confirm-title");
+  dialog.innerHTML = '<h2 id="transfer-confirm-title">请核对汇款记录</h2><p></p><form method="dialog" class="controls"><button value="revise" autofocus>返回修改</button><button value="save" class="primary">确认保存</button></form>';
+  dialog.querySelector("p").textContent = messages.join("\n");
+  document.body.append(dialog);
+  return new Promise(resolve => {
+    dialog.addEventListener("close", () => {
+      const accepted = dialog.returnValue === "save";
+      dialog.remove();
+      resolve(accepted);
+    }, {once:true});
+    dialog.showModal();
+  });
+}
 root.addEventListener(
   "submit",
-  guarded((e) => {
+  guarded(async (e) => {
     e.preventDefault();
     const values = Object.fromEntries(new FormData(e.target));
-    const rows = load(kind);
     const row = normalize(kind, {
       ...values,
       id: editing?.id,
@@ -330,14 +353,14 @@ root.addEventListener(
     });
     const unusualExpense =
       kind === "expense" && (row.amount < 1 || row.amount > 10000);
-    const unusualTransfer =
-      kind === "remittance" &&
-      (row.amount < 20 || row.amount > 100000 || row.rate < 5 || row.rate > 10);
-    if (
-      (unusualExpense || unusualTransfer) &&
-      !confirm("金额或汇率超出常用范围，是否仍然保存？")
-    )
-      return;
+    if (unusualExpense && !confirm("金额或汇率超出常用范围，是否仍然保存？")) return;
+    if (kind === "remittance") {
+      const warnings = [];
+      if (row.amount < 20 || row.amount > 100000) warnings.push(`汇款金额为 ${money(row.amount)}，请核对金额。`);
+      if (rateNeedsReview(row.rate)) warnings.push(`当前汇率为 ${row.rate.toFixed(3)}，可能有误。确认按此汇率保存吗？`);
+      if (warnings.length && !(await confirmTransfer(warnings))) return;
+    }
+    const rows = load(kind);
     if (editing && !rows.some((r) => r.id === editing.id))
       throw new Error("此记录已删除，请重新打开查看。");
     save(
