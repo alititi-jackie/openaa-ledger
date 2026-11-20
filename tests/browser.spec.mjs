@@ -36,6 +36,17 @@ test("手机端录入、跨年查看、编辑、备份、汇款、汇总与离�
       await field("usd").fill(value);
       const rect = await field("date").boundingBox();
       expect(rect.x + rect.width).toBeLessThanOrEqual(375);
+      if (kind !== "remittance") {
+        await expect(page.locator('input[type="radio"]:checked')).toHaveCount(0);
+        await page.getByRole("button", {name: "保存", exact: true}).click();
+        await expect(page.locator("#error-method")).toHaveText(kind === "income" ? "请选择收款方式" : "请选择支付方式");
+        await page.getByText("银行卡", {exact: true}).click();
+        if (kind === "expense") {
+          await page.getByRole("button", {name: "保存", exact: true}).click();
+          await expect(page.locator("#error-category")).toHaveText("请选择开支分类");
+          await page.getByText("餐饮", {exact: true}).click();
+        }
+      }
       if (kind === "remittance") {
         await field("rate").fill("7.2");
         await expect(field("cny")).toHaveValue("7200.00");
@@ -61,6 +72,8 @@ test("手机端录入、跨年查看、编辑、备份、汇款、汇总与离�
     await field("year").selectOption("2025");
     await page.locator("summary").click();
     await click("edit");
+    await expect(page.getByRole("radio", {name:"银行卡"})).toBeChecked();
+    await expect(page.getByRole("radio", {name:"餐饮"})).toBeChecked();
     await field("usd").fill("1801");
     await page.getByRole("button", { name: "保存", exact: true }).click();
     await expect(field("year")).toHaveValue("2025");

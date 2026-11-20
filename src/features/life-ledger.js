@@ -107,14 +107,14 @@ function home() {
 const input = (name, label, type, value, extra = "") =>
   `<label>${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
 function radios(name, label, values, current) {
-  return `<fieldset><legend>${label}</legend><div class="choices">${Object.entries(
+  return `<fieldset data-choice><legend>${label}</legend><div class="choices">${Object.entries(
     values,
   )
     .map(
       ([v, l]) =>
-        `<label><input type="radio" name="${name}" value="${escape(v)}" ${current === v ? "checked" : ""} required><span>${escape(l)}</span></label>`,
+        `<label><input type="radio" name="${name}" aria-describedby="error-${name}" value="${escape(v)}" ${current === v ? "checked" : ""} required><span>${escape(l)}</span></label>`,
     )
-    .join("")}</div></fieldset>`;
+    .join("")}</div><small id="error-${name}" class="choice-error" role="alert"></small></fieldset>`;
 }
 function form() {
   const r = editing || {};
@@ -129,8 +129,8 @@ function form() {
   return `<h1>${editing ? "编辑" : "记一笔"}${names[kind]}</h1><form class="panel">
  ${input("date", "日期", "date", r.date || today(), "required")}
  ${decimal("usd", "美元金额（USD）", r.amount ?? "", 0.01)}
- ${kind === "remittance" ? decimal("rate", "汇率（1 美元兑换人民币）", r.rate?.toFixed(3) ?? "", 0.001) + decimal("cny", "人民币金额（CNY）", r.cny ?? "", 0.01) + `<fieldset><legend>计算哪一项</legend><div class="calc">${FX_FIELDS.map((k) => button("target", fxNames[k], `data-field="${k}"`)).join("")}</div></fieldset>` : radios("method", kind === "income" ? "收款方式" : "支付方式", { cash: "现金", card: "银行卡" }, r.method || "cash")}
- ${kind === "expense" ? radios("category", "开支分类", Object.fromEntries([...new Set([...categories, r.category].filter(Boolean))].map((x) => [x, x])), r.category || categories[0]) : ""}
+ ${kind === "remittance" ? decimal("rate", "汇率（1 美元兑换人民币）", r.rate?.toFixed(3) ?? "", 0.001) + decimal("cny", "人民币金额（CNY）", r.cny ?? "", 0.01) + `<fieldset><legend>计算哪一项</legend><div class="calc">${FX_FIELDS.map((k) => button("target", fxNames[k], `data-field="${k}"`)).join("")}</div></fieldset>` : radios("method", kind === "income" ? "收款方式" : "支付方式", { cash: "现金", card: "银行卡" }, r.method)}
+ ${kind === "expense" ? radios("category", "开支分类", Object.fromEntries([...new Set([...categories, r.category].filter(Boolean))].map((x) => [x, x])), r.category) : ""}
  ${kind !== "income" ? `<label>备注（选填）<textarea name="note" maxlength="10000" rows="2">${escape(r.note)}</textarea></label>` : ""}
  <div class="controls">${button("cancel", "取消")}<button class="primary" type="submit">保存</button></div></form>`;
 }
@@ -246,6 +246,18 @@ function calc(form) {
   if (n !== null) form.elements[target].value = n;
   markTarget();
 }
+// Native required groups prevent submission; show a visible reminder beside each missing group.
+root.addEventListener("invalid", (event) => {
+  const group = event.target.closest("[data-choice]");
+  if (group && event.target.validity.valueMissing) {
+    const message = group.querySelector(".choice-error");
+    if (!message.textContent) message.textContent = "请选择" + group.querySelector("legend").textContent;
+  }
+}, true);
+root.addEventListener("change", (event) => {
+  const group = event.target.closest("[data-choice]");
+  if (group) group.querySelector(".choice-error").textContent = "";
+});
 root.addEventListener("input", (e) => {
   if (kind !== "remittance" || !FX_FIELDS.includes(e.target.name)) return;
   const field = e.target.name,

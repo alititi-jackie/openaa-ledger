@@ -378,3 +378,5 @@ legend {
     margin-bottom: 18px;
   }
 }
+
+.choice-error:not(:empty) { display: block; margin-top: 6px; color: #a02432; }
