@@ -131,7 +131,7 @@ function form() {
  ${decimal("usd", "美元金额（USD）", r.amount ?? "", 0.01)}
  ${kind === "remittance" ? decimal("rate", "汇率（1 美元兑换人民币）", r.rate?.toFixed(3) ?? "", 0.001) + decimal("cny", "人民币金额（CNY）", r.cny ?? "", 0.01) + `<fieldset><legend>计算哪一项</legend><div class="calc">${FX_FIELDS.map((k) => button("target", fxNames[k], `data-field="${k}"`)).join("")}</div></fieldset>` : radios("method", kind === "income" ? "收款方式" : "支付方式", { cash: "现金", card: "银行卡" }, r.method)}
  ${kind === "expense" ? radios("category", "开支分类", Object.fromEntries([...new Set([...categories, r.category].filter(Boolean))].map((x) => [x, x])), r.category) : ""}
- ${kind !== "income" ? `<label>备注（选填）<textarea name="note" maxlength="10000" rows="2">${escape(r.note)}</textarea></label>` : ""}
+ <label>备注（选填）<textarea name="note" maxlength="10000" rows="2">${escape(r.note)}</textarea></label>
  <div class="controls">${button("cancel", "取消")}<button class="primary" type="submit">保存</button></div></form>`;
 }
 function picker() {
