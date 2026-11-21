@@ -1,23 +1,22 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 const scope = "/usa/life-ledger/";
-const html = await readFile("dist" + scope + "index.html", "utf8");
-const resources = [
-  scope,
-  ...Array.from(
-    html.matchAll(/(?:src|href)="(\/_astro\/[^"]+)"/g),
-    (m) => m[1],
-  ),
+const pages = [scope, scope + "guide/"];
+const paths = new Set([
+  ...pages,
   "/assets/openaa-logo.png",
-  ...["manifest.json", "icon-192.png", "icon-512.png"].map(
-    (name) => scope + name,
-  ),
-];
+  ...["manifest.json", "icon-192.png", "icon-512.png"].map(name => scope + name),
+]);
+for (const page of pages) {
+  const html = await readFile("dist" + page + "index.html", "utf8");
+  for (const match of html.matchAll(/(?:src|href)="(\/_astro\/[^"]+)"/g)) paths.add(match[1]);
+}
+const resources = [...paths];
 const digest = createHash("sha256");
-for (const path of resources)
-  digest.update(
-    await readFile("dist" + (path === scope ? scope + "index.html" : path)),
-  );
+for (const path of resources) {
+  const file = path.endsWith("/") ? path + "index.html" : path;
+  digest.update(path).update(await readFile("dist" + file));
+}
 const name = "openaa-life-ledger-" + digest.digest("hex").slice(0, 16);
 await writeFile(
   "dist" + scope + "sw.js",

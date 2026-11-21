@@ -174,43 +174,104 @@ function xlsxStylesXml() {
     "</styleSheet>"
   );
 }
-export function makeWorkbook(detail, months, years) {
+export function makeWorkbook(sheets) {
+  const ns = "http://schemas.openxmlformats.org";
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.";
+  const header = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const parts = sheets.map(([name, rows], i) => ({
+    name,
+    rows,
+    id: i + 1,
+    path: "worksheets/sheet" + (i + 1) + ".xml",
+  }));
+  function relationships(items) {
+    return (
+      header +
+      '<Relationships xmlns="' +
+      ns +
+      '/package/2006/relationships">' +
+      items
+        .map(
+          ([id, type, path]) =>
+            '<Relationship Id="rId' +
+            id +
+            '" Type="' +
+            ns +
+            "/officeDocument/2006/relationships/" +
+            type +
+            '" Target="' +
+            path +
+            '"/>',
+        )
+        .join("") +
+      "</Relationships>"
+    );
+  }
+  const types = [
+    ["workbook.xml", "sheet.main"],
+    ["styles.xml", "styles"],
+    ...parts.map((p) => [p.path, "worksheet"]),
+  ];
   const files = [
     {
       name: "[Content_Types].xml",
       content:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
+        header +
+        '<Types xmlns="' +
+        ns +
+        '/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+        types
+          .map(
+            ([path, type]) =>
+              '<Override PartName="/xl/' +
+              path +
+              '" ContentType="' +
+              mime +
+              type +
+              '+xml"/>',
+          )
+          .join("") +
+        "</Types>",
     },
     {
       name: "_rels/.rels",
-      content:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      content: relationships([[1, "officeDocument", "xl/workbook.xml"]]),
     },
     {
       name: "xl/workbook.xml",
       content:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="全部记录" sheetId="1" r:id="rId1"/><sheet name="月度记录" sheetId="2" r:id="rId2"/><sheet name="年度记录" sheetId="3" r:id="rId3"/></sheets></workbook>',
+        header +
+        '<workbook xmlns="' +
+        ns +
+        '/spreadsheetml/2006/main" xmlns:r="' +
+        ns +
+        '/officeDocument/2006/relationships"><sheets>' +
+        parts
+          .map(
+            (p) =>
+              '<sheet name="' +
+              escapeXml(p.name) +
+              '" sheetId="' +
+              p.id +
+              '" r:id="rId' +
+              p.id +
+              '"/>',
+          )
+          .join("") +
+        "</sheets></workbook>",
     },
     {
       name: "xl/_rels/workbook.xml.rels",
-      content:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+      content: relationships([
+        ...parts.map((p) => [p.id, "worksheet", p.path]),
+        [parts.length + 1, "styles", "styles.xml"],
+      ]),
     },
     { name: "xl/styles.xml", content: xlsxStylesXml() },
-    {
-      name: "xl/worksheets/sheet1.xml",
-      content: sheetXmlAdvanced(detail),
-    },
-    {
-      name: "xl/worksheets/sheet2.xml",
-      content: sheetXmlAdvanced(months),
-    },
-    {
-      name: "xl/worksheets/sheet3.xml",
-      content: sheetXmlAdvanced(years),
-    },
+    ...parts.map((p) => ({
+      name: "xl/" + p.path,
+      content: sheetXmlAdvanced(p.rows),
+    })),
   ];
-  return new Blob([makeZip(files)], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  return new Blob([makeZip(files)], { type: mime + "sheet" });
 }

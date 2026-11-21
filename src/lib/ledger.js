@@ -229,11 +229,11 @@ function grouped(kind, rows, length) {
   return sheets;
 }
 export function xlsx(kind, rows) {
-  return makeWorkbook(
-    table(kind, rows),
-    grouped(kind, rows, 7),
-    grouped(kind, rows, 4),
-  );
+  return makeWorkbook([
+    ["全部记录", table(kind, rows)],
+    ["月度记录", grouped(kind, rows, 7)],
+    ["年度记录", grouped(kind, rows, 4)],
+  ]);
 }
 export function csv(kind, rows) {
   function escape(value) {
@@ -247,4 +247,166 @@ export function csv(kind, rows) {
       .map((row) => row.map(escape).join(","))
       .join("\r\n")
   );
+}
+
+function mapBooks(fn) {
+  return Object.fromEntries(kinds.map((kind) => [kind, fn(kind)]));
+}
+export function readBooks() {
+  return mapBooks(load);
+}
+export function balances(books) {
+  const { expense, income, remittance } = mapBooks((kind) =>
+    totals(kind, books[kind]),
+  );
+  const after = Math.round(income.usd * 100) - Math.round(expense.usd * 100);
+  return [
+    income.usd,
+    expense.usd,
+    after / 100,
+    remittance.usd,
+    (after - Math.round(remittance.usd * 100)) / 100,
+    remittance.cny,
+  ];
+}
+export function fullBackup(books) {
+  return {
+    app,
+    version: 1,
+    kind: "all",
+    exportedAt: new Date().toISOString(),
+    books: mapBooks((kind) => backup(kind, books[kind]).records),
+  };
+}
+export function parseFullBackup(input) {
+  const text = typeof input === "string" ? input : JSON.stringify(input);
+  check(new Blob([text]).size <= 3 * maxBytes + 1024, "整本备份文件过大。");
+  const data = JSON.parse(text);
+  check(
+    data?.app === app &&
+      data.kind === "all" &&
+      data.version === 1 &&
+      data.books,
+    "请选择整本账本备份。",
+  );
+  return fullBackup(data.books).books;
+}
+// Apply all validated writes together, restoring prior values if a quota error interrupts them.
+function commitStorage(changes) {
+  const undo = [];
+  try {
+    for (const [k, value] of changes) {
+      const previous = localStorage.getItem(k);
+      if (value === null) localStorage.removeItem(k);
+      else localStorage.setItem(k, value);
+      undo.push([k, previous]);
+    }
+  } catch (error) {
+    for (const [k, old] of undo.reverse()) {
+      if (old === null) localStorage.removeItem(k);
+      else localStorage.setItem(k, old);
+    }
+    throw error;
+  }
+}
+export function importBooks(books, mode = "merge") {
+  check(["merge", "replace"].includes(mode), "请选择合并或覆盖。");
+  const normalized = fullBackup(books).books;
+  const old = readBooks();
+  const next = mapBooks(
+    (kind) =>
+      backup(
+        kind,
+        mode === "merge"
+          ? mergeRows(old[kind], normalized[kind])
+          : normalized[kind],
+      ).records,
+  );
+  const changes = [];
+  for (const kind of kinds) {
+    changes.push(
+      [key(kind) + "_before_import", JSON.stringify(old[kind])],
+      [key(kind), JSON.stringify(next[kind])],
+    );
+  }
+  commitStorage(changes);
+  return next;
+}
+export function clearBooks(selected) {
+  check(Array.isArray(selected) && selected.length > 0, "请选择要清除的账本。");
+  const changes = [];
+  for (const kind of new Set(selected)) {
+    changes.push([key(kind) + "_before_import", null], [key(kind), null]);
+  }
+  commitStorage(changes);
+}
+const bookNames = { expense: "开支", income: "收入", remittance: "汇款" };
+const balanceLabels = [
+  "收入（美元）",
+  "开支（美元）",
+  "扣除开支后剩余（美元）",
+  "汇出（美元）",
+  "扣除汇款后结余（美元）",
+  "汇款折合人民币",
+];
+function overview(books, label) {
+  return [
+    ["收支汇总", label],
+    ...balances(books).map((n, i) => [balanceLabels[i], n]),
+  ];
+}
+export function reportXlsx(kind, books, prefix = "", label = "全部") {
+  const selected = mapBooks((k) =>
+    books[k].filter((row) => row.date.startsWith(prefix || "")),
+  );
+  if (kind === "summary")
+    return makeWorkbook([["收支汇总", overview(selected, label)]]);
+  if (kind === "all") {
+    const sheets = [["收支总览", overview(books, "全部")]];
+    for (const k of kinds)
+      sheets.push([bookNames[k] + "明细", table(k, books[k])]);
+    for (const [length, name] of [
+      [7, "月度汇总"],
+      [4, "年度汇总"],
+    ]) {
+      const groups = new Map();
+      for (const k of kinds)
+        for (const row of books[k]) {
+          const period = row.date.slice(0, length);
+          if (!groups.has(period))
+            groups.set(
+              period,
+              mapBooks(() => []),
+            );
+          groups.get(period)[k].push(row);
+        }
+      const rows = [[name, ...balanceLabels]];
+      for (const period of [...groups.keys()].sort().reverse())
+        rows.push([period, ...balances(groups.get(period))]);
+      sheets.push([name, rows]);
+    }
+    return makeWorkbook(sheets);
+  }
+  key(kind);
+  const t = totals(kind, selected[kind]);
+  const stats = [
+    ["统计范围", label],
+    ["记录笔数", t.count],
+    ["美元合计", t.usd],
+    ...(kind === "remittance"
+      ? [
+          ["人民币合计", t.cny],
+          ["平均汇率", +t.rate.toFixed(3)],
+        ]
+      : [
+          ["现金", t.cash],
+          ["银行卡", t.card],
+        ]),
+  ];
+  return makeWorkbook([
+    ["所选时段汇总", stats],
+    ["全部记录", table(kind, books[kind])],
+    ["月度记录", grouped(kind, books[kind], 7)],
+    ["年度记录", grouped(kind, books[kind], 4)],
+  ]);
 }

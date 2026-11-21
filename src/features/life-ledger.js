@@ -8,9 +8,20 @@ import {
   save,
   importRows,
   restore,
-  xlsx,
+  readBooks,
+  balances,
+  fullBackup,
+  parseFullBackup,
+  importBooks,
+  clearBooks,
+  reportXlsx,
 } from "../lib/ledger.js";
-import { FX_FIELDS, calculateFxTarget, roundFx, rateNeedsReview } from "../lib/fx-calculator.js";
+import {
+  FX_FIELDS,
+  calculateFxTarget,
+  roundFx,
+  rateNeedsReview,
+} from "../lib/fx-calculator.js";
 import { showFeedback, copyText, showCopyResult } from "../lib/feedback.js";
 import { shareFileOrDownload } from "../lib/share-file.js";
 
@@ -54,6 +65,7 @@ const today = () => {
 };
 let kind = "expense",
   page = "home",
+  scope = "current",
   editing = null,
   preview = null,
   target = "cny",
@@ -103,7 +115,9 @@ function home() {
       ([k, v]) =>
         `<button class="home-card" data-page="${k}"><span class="icon ${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">${icons[k]}</svg></span><span><strong>${v}</strong><small>${subtitles[k]}</small></span><span class="chev" aria-hidden="true">›</span></button>`,
     )
-    .join("")}</div>${button("install", "添加到手机主屏幕", `class="install-entry" ${isInstalled() ? "hidden" : ""}`)}`;
+    .join(
+      "",
+    )}</div>${button("install", "添加到手机主屏幕", `class="install-entry" ${isInstalled() ? "hidden" : ""}`)}<small class="install-tip">添加后，点桌面上的「生活账本」就能记一笔。</small><p class="storage-note">账目仅保存在当前浏览器。清除网站数据或换手机前，请先下载备份。 <a href="./guide/">使用说明</a></p>`;
 }
 const input = (name, label, type, value, extra = "") =>
   `<label>${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
@@ -115,7 +129,9 @@ function radios(name, label, values, current) {
       ([v, l]) =>
         `<label><input type="radio" name="${name}" aria-describedby="error-${name}" value="${escape(v)}" ${current === v ? "checked" : ""} required><span>${escape(l)}</span></label>`,
     )
-    .join("")}</div><small id="error-${name}" class="choice-error" role="alert"></small></fieldset>`;
+    .join(
+      "",
+    )}</div><small id="error-${name}" class="choice-error" role="alert"></small></fieldset>`;
 }
 function form() {
   const r = editing || {};
@@ -198,38 +214,119 @@ function view() {
   }
   return `<h1>${names[kind]}记录</h1>${picker()}${statGrid(stats(kind, rows))}<h2>${periodName()}${names[kind]}明细</h2><section class="panel list">${!rows.length ? '<p class="empty">这个时段暂无记录</p>' : month ? details(rows) : [...groups].map(([group, items]) => `<details><summary>${group} · ${items.length} 笔 <b>${money(totals(kind, items).usd)}</b></summary>${details(items)}</details>`).join("")}</section>`;
 }
-function summary() {
-  const income = totals("income", selected("income")).usd,
-    expense = totals("expense", selected("expense")).usd,
-    fx = totals("remittance", selected("remittance"));
-  const first = (Math.round(income * 100) - Math.round(expense * 100)) / 100;
-  const net = (Math.round(first * 100) - Math.round(fx.usd * 100)) / 100;
-  const span = { month: "本月", year: "本年", all: "累计" }[filter().mode];
-  return `<h1>收支总览</h1>${picker()}<h2>${periodName()}收支</h2><dl class="panel balance">${[
+function balancePairs(books, mode) {
+  const [income, expense, first, usd, net, cny] = balances(books);
+  const span = { month: "本月", year: "本年", all: "累计" }[mode];
+  return [
     ["收入", money(income)],
     ["生活开支", "−" + money(expense)],
     ["扣除开支后剩余", money(first)],
-    ["汇出美元", "−" + money(fx.usd)],
+    ["汇出美元", "−" + money(usd)],
     [span + "结余", money(net)],
-    ["汇款折合人民币", money(fx.cny, "¥")],
-  ]
-    .map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`)
-    .join("")}</dl>`;
+    ["汇款折合人民币", money(cny, "¥")],
+  ];
 }
+function periodBooks() {
+  return Object.fromEntries(
+    ["expense", "income", "remittance"].map((k) => [k, selected(k)]),
+  );
+}
+function summary() {
+  const pairs = balancePairs(periodBooks(), filter().mode);
+  return `<h1>收支总览</h1>${picker()}<h2>${periodName()}收支</h2><dl class="panel balance">${pairs.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl><div class="controls"><button type="button" data-page="export">导出／分享</button></div>`;
+}
+function exportInfo() {
+  if (scope === "all")
+    return {
+      title: "全部年份收支总览",
+      pairs: balancePairs(readBooks(), "all"),
+      fileLabel: "全部记录",
+    };
+  if (kind === "summary")
+    return {
+      title: periodName() + "收支总览",
+      pairs: balancePairs(periodBooks(), filter().mode),
+      fileLabel: periodName() + "收支总览",
+    };
+  return {
+    title: periodName() + names[kind] + "汇总",
+    pairs: stats(kind, selected(kind)),
+    fileLabel: names[kind] + "记录",
+  };
+}
+const bookLabel = (k) => (k === "all" ? "三个账本" : names[k]);
+const counts = (books) =>
+  Object.entries(books)
+    .map(([k, rows]) => names[k] + " " + rows.length + " 笔")
+    .join("、");
 function exportsPage() {
-  const title = names[kind];
-  return `<h1>${title}导出／分享</h1><section class="panel"><h2>汇总文字</h2>${button("copy", "复制" + periodName() + title + "汇总")}</section>
- <section class="panel"><h2>全部${title} · Excel</h2><div class="controls">${button("excel", "下载 Excel")}${button("shareExcel", "分享 Excel")}</div></section>
- <section class="panel"><h2>全部${title} · 数据备份</h2><p>账目保存在当前浏览器。换设备前，请下载备份。</p><div class="controls">${button("backup", "下载备份")}${button("shareBackup", "分享备份")}</div><label class="file">导入数据备份<input type="file" name="file" accept=".json,application/json"></label>${button("restore", "恢复导入前的记录")}</section>${preview ? importPanel() : ""}`;
+  const all = scope === "all",
+    overview = kind === "summary";
+  const current = overview ? "收支总览" : names[kind] + "记录";
+  const { title, pairs, fileLabel } = exportInfo();
+  const backupLabel = all ? "完整" : names[kind];
+  const backupScope = all
+    ? "包含开支、收入和汇款三个账本的全部年份。"
+    : "包含全部年份的" + names[kind] + "记录。";
+  const clearTarget = overview ? "all" : kind;
+  return `<h1>${overview ? "收支总览" : names[kind]}导出／分享</h1>
+  ${nav({ current, all: "全部记录" }, "scope", scope, "导出范围")}
+  <section class="panel"><h2>${title}</h2>${statGrid(pairs)}<div class="controls">${button("copy", "复制汇总")}${button("shareText", "分享汇总")}</div></section>
+  <section class="panel"><h2>Excel 表格</h2><p>${all ? "全部年份的总览、三个账本明细、月度和年度汇总。" : overview ? "仅含所选时段的收支总览。" : "首页为所选时段汇总，后附全部年份的明细、月度和年度统计。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>
+  ${all || !overview ? `<section class="panel"><h2>${backupLabel}备份</h2><p>${backupScope}清除网站数据、重装浏览器或换手机前，请下载 JSON 备份并确认文件已保存。</p><div class="controls">${button("backup", "下载" + backupLabel + "备份")}${button("shareBackup", "分享" + backupLabel + "备份")}</div><label class="file">导入${backupLabel}备份<input type="file" name="file" accept=".json,application/json"></label>${!all ? button("restore", "恢复导入前的记录") : ""}</section>` : ""}
+  ${preview ? importPanel() : ""}
+  ${!overview || all ? `<div class="clear-section">${button("clear", overview ? "清空三个账本" : "清空" + names[kind] + "记录", `data-clear="${clearTarget}" class="clear-entry"`)}</div>` : ""}`;
+}
+function backupFile(target) {
+  const data =
+    target === "all" ? fullBackup(readBooks()) : backup(target, load(target));
+  return new Blob([JSON.stringify(data)], { type: "application/json" });
+}
+function confirmClear(target) {
+  const kinds =
+    target === "all" ? ["expense", "income", "remittance"] : [target];
+  const current = () => Object.fromEntries(kinds.map((k) => [k, load(k)]));
+  const initial = current();
+  const dialog = document.createElement("dialog");
+  dialog.className = "transfer-confirm clear-dialog";
+  const label = bookLabel(target);
+  dialog.setAttribute("aria-labelledby", "clear-title");
+  dialog.innerHTML = `<h2 id="clear-title">清空${label}${target === "all" ? "" : "全部记录"}？</h2><p>将删除此浏览器中全部年份的记录（${counts(initial)}），以及对应账本的导入前记录。${target === "all" ? "" : "其他账本保留。"}收支总览会重新计算。</p><p>如需以后恢复，请先下载 JSON 备份，并确认文件已保存。</p><div class="controls"><button type="button" data-download>下载${target === "all" ? "完整" : label}备份</button></div><p role="status"></p><form method="dialog" class="controls"><button autofocus value="cancel">取消</button><button class="danger" value="clear">确认清空${label}</button></form>`;
+  dialog.querySelector("[data-download]").onclick = guarded(() => {
+    download(
+      backupFile(target),
+      "OpenAA-" + label + "备份-" + today() + ".json",
+    );
+    dialog.querySelector("[role=status]").textContent =
+      "已请求下载，请确认文件已保存。";
+  });
+  document.body.append(dialog);
+  dialog.addEventListener(
+    "close",
+    guarded(() => {
+      dialog.remove();
+      if (dialog.returnValue !== "clear") return;
+      if (JSON.stringify(current()) !== JSON.stringify(initial))
+        throw new Error("记录已发生变化，请重新核对后再清空。");
+      clearBooks(kinds);
+      preview = null;
+      render();
+      showFeedback("已清空" + label + "记录");
+    }),
+    { once: true },
+  );
+  dialog.showModal();
 }
 function importPanel() {
+  if (preview.books)
+    return `<section class="panel" id="import-preview"><h2>完整备份导入预览</h2><p>${counts(preview.books)}</p><p>合并会保留已有记录并跳过重复编号。覆盖会替换三个账本，包括备份中为零笔的账本。</p><div class="controls">${button("merge", "合并导入")}${button("replace", "覆盖三个账本")}${button("abort", "取消")}</div></section>`;
   const pick = preview.legacy && kind === "remittance";
   return `<section class="panel" id="import-preview"><h2>导入预览</h2><p>可导入 ${preview.rows.length} 笔。${preview.skipped ? "已排除 " + preview.skipped + " 笔减去记录。" : ""}</p>${pick ? "<p>勾选确实属于汇款的记录。</p>" : ""}<div class="preview-list">${preview.rows.map((r, i) => `<label>${pick ? `<input type="checkbox" data-import="${i}">` : ""}${escape(r.date)} · ${money(r.amount)} ${escape(r.note)}</label>`).join("")}</div><div class="controls">${button("merge", "合并导入")}${button("replace", "覆盖导入")}${button("abort", "取消")}</div></section>`;
 }
 function render() {
   root.innerHTML =
     nav(names, "book", kind, "账本导航") +
-    `<div class="ledger-content">${kind !== "summary" && page !== "home" ? button("back", "‹ 返回" + names[kind] + "账本", 'class="back"') : ""}${kind === "summary" ? summary() : { home, view, form, export: exportsPage }[page]()}</div><output id="site-status" role="status" aria-live="polite"></output>`;
+    `<div class="ledger-content">${page !== "home" ? button("back", kind === "summary" ? "‹ 返回收支总览" : "‹ 返回" + names[kind] + "账本", 'class="back"') : ""}${page === "export" ? exportsPage() : kind === "summary" ? summary() : { home, view, form, export: exportsPage }[page]()}</div><output id="site-status" role="status" aria-live="polite"></output>`;
   if (page === "form") markTarget();
 }
 function markTarget() {
@@ -242,7 +339,8 @@ function markTarget() {
 function updateRateWarning(form, defer = false) {
   const warning = form.querySelector("#rate-warning");
   const unusual = rateNeedsReview(roundFx(Number(form.elements.rate.value), 3));
-  if (!defer || !unusual) warning.textContent = unusual ? "⚠ 汇率可能有误，请核对。" : "";
+  if (!defer || !unusual)
+    warning.textContent = unusual ? "⚠ 汇率可能有误，请核对。" : "";
 }
 function calc(form) {
   const values = Object.fromEntries(
@@ -254,13 +352,19 @@ function calc(form) {
   markTarget();
 }
 // Native required groups prevent submission; show a visible reminder beside each missing group.
-root.addEventListener("invalid", (event) => {
-  const group = event.target.closest("[data-choice]");
-  if (group && event.target.validity.valueMissing) {
-    const message = group.querySelector(".choice-error");
-    if (!message.textContent) message.textContent = "请选择" + group.querySelector("legend").textContent;
-  }
-}, true);
+root.addEventListener(
+  "invalid",
+  (event) => {
+    const group = event.target.closest("[data-choice]");
+    if (group && event.target.validity.valueMissing) {
+      const message = group.querySelector(".choice-error");
+      if (!message.textContent)
+        message.textContent =
+          "请选择" + group.querySelector("legend").textContent;
+    }
+  },
+  true,
+);
 root.addEventListener("change", (event) => {
   const group = event.target.closest("[data-choice]");
   if (group) group.querySelector(".choice-error").textContent = "";
@@ -303,6 +407,7 @@ root.addEventListener("focusout", (e) => {
 });
 function go(next, top = true) {
   page = next;
+  scope = "current";
   preview = null;
   render();
   if (top) window.scrollTo(0, 0);
@@ -330,15 +435,20 @@ function confirmTransfer(messages) {
   const dialog = document.createElement("dialog");
   dialog.className = "transfer-confirm";
   dialog.setAttribute("aria-labelledby", "transfer-confirm-title");
-  dialog.innerHTML = '<h2 id="transfer-confirm-title">请核对汇款记录</h2><p></p><form method="dialog" class="controls"><button value="revise" autofocus>返回修改</button><button value="save" class="primary">确认保存</button></form>';
+  dialog.innerHTML =
+    '<h2 id="transfer-confirm-title">请核对汇款记录</h2><p></p><form method="dialog" class="controls"><button value="revise" autofocus>返回修改</button><button value="save" class="primary">确认保存</button></form>';
   dialog.querySelector("p").textContent = messages.join("\n");
   document.body.append(dialog);
-  return new Promise(resolve => {
-    dialog.addEventListener("close", () => {
-      const accepted = dialog.returnValue === "save";
-      dialog.remove();
-      resolve(accepted);
-    }, {once:true});
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      "close",
+      () => {
+        const accepted = dialog.returnValue === "save";
+        dialog.remove();
+        resolve(accepted);
+      },
+      { once: true },
+    );
     dialog.showModal();
   });
 }
@@ -354,11 +464,16 @@ root.addEventListener(
     });
     const unusualExpense =
       kind === "expense" && (row.amount < 1 || row.amount > 10000);
-    if (unusualExpense && !confirm("金额或汇率超出常用范围，是否仍然保存？")) return;
+    if (unusualExpense && !confirm("金额或汇率超出常用范围，是否仍然保存？"))
+      return;
     if (kind === "remittance") {
       const warnings = [];
-      if (row.amount < 20 || row.amount > 100000) warnings.push(`汇款金额为 ${money(row.amount)}，请核对金额。`);
-      if (rateNeedsReview(row.rate)) warnings.push(`当前汇率为 ${row.rate.toFixed(3)}，可能有误。确认按此汇率保存吗？`);
+      if (row.amount < 20 || row.amount > 100000)
+        warnings.push(`汇款金额为 ${money(row.amount)}，请核对金额。`);
+      if (rateNeedsReview(row.rate))
+        warnings.push(
+          `当前汇率为 ${row.rate.toFixed(3)}，可能有误。确认按此汇率保存吗？`,
+        );
       if (warnings.length && !(await confirmTransfer(warnings))) return;
     }
     const rows = load(kind);
@@ -386,10 +501,23 @@ root.addEventListener(
     }
     if (field.name === "file" && field.files[0]) {
       const current = kind,
+        initialScope = scope,
         file = field.files[0];
-      if (file.size > 5 * 1024 * 1024) throw new Error("备份超过 5 MB。");
-      const parsed = parseBackup(kind, await file.text());
-      if (current !== kind || page !== "export") return;
+      const limit = scope === "all" ? 16 : 5;
+      if (file.size > limit * 1024 * 1024)
+        throw new Error("备份超过 " + limit + " MB。");
+      const contents = await file.text();
+      if (
+        current !== kind ||
+        scope !== initialScope ||
+        page !== "export" ||
+        !field.isConnected
+      )
+        return;
+      const parsed =
+        scope === "all"
+          ? { books: parseFullBackup(contents) }
+          : parseBackup(kind, contents);
       preview = parsed;
       render();
       root.querySelector("#import-preview").scrollIntoView();
@@ -409,6 +537,12 @@ root.addEventListener(
     }
     if (b.dataset.period) {
       filter().mode = b.dataset.period;
+      render();
+      return;
+    }
+    if (b.dataset.scope) {
+      scope = b.dataset.scope;
+      preview = null;
       render();
       return;
     }
@@ -449,27 +583,45 @@ root.addEventListener(
       showFeedback("已删除");
       return;
     }
-    if (a === "copy") {
-      const label = periodName() + names[kind] + "汇总";
-      const text = [
-        label,
-        ...stats(kind, selected(kind)).map(([k, v]) => k + "　" + v),
-      ].join("\n");
-      showCopyResult(await copyText(text), text, label);
+    if (a === "clear") {
+      confirmClear(b.dataset.clear);
+      return;
+    }
+    if (a === "copy" || a === "shareText") {
+      const { title, pairs } = exportInfo();
+      const text = [title, ...pairs.map(([k, v]) => k + "　" + v)].join("\n");
+      if (a === "shareText" && navigator.share) {
+        try {
+          await navigator.share({ title, text });
+          return;
+        } catch (error) {
+          if (error.name === "AbortError") return;
+        }
+      }
+      showCopyResult(await copyText(text), text, title);
       return;
     }
     if (["excel", "backup", "shareExcel", "shareBackup"].includes(a)) {
       const sheet = a.toLowerCase().includes("excel"),
-        rows = load(kind);
+        target = scope === "all" ? "all" : kind;
+      const { title, fileLabel } = exportInfo();
       const blob = sheet
-        ? xlsx(kind, rows)
-        : new Blob([JSON.stringify(backup(kind, rows), null, 2)], {
-            type: "application/json",
-          });
+        ? reportXlsx(
+            target,
+            readBooks(),
+            scope === "all" ? "" : prefix(),
+            title,
+          )
+        : backupFile(target);
       const filename =
-        "OpenAA-" + names[kind] + "-" + today() + (sheet ? ".xlsx" : ".json");
+        "OpenAA-" +
+        fileLabel +
+        (sheet ? "" : "备份") +
+        "-" +
+        today() +
+        (sheet ? ".xlsx" : ".json");
       if (a.startsWith("share"))
-        await shareFileOrDownload(blob, filename, names[kind], download);
+        await shareFileOrDownload(blob, filename, fileLabel, download);
       else {
         download(blob, filename);
         showFeedback("已开始下载");
@@ -488,6 +640,18 @@ root.addEventListener(
       return;
     }
     if (a === "merge" || a === "replace") {
+      if (preview.books) {
+        if (
+          a === "replace" &&
+          !confirm("确认用完整备份覆盖三个账本的全部记录？")
+        )
+          return;
+        importBooks(preview.books, a);
+        preview = null;
+        render();
+        showFeedback("三个账本已完成导入");
+        return;
+      }
       let rows = preview.rows;
       if (preview.legacy && kind === "remittance") {
         rows = [...root.querySelectorAll("[data-import]:checked")].map(
