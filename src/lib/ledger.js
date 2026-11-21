@@ -351,50 +351,39 @@ const balanceLabels = [
 ];
 // Workbook style 4 is the bold red total amount style.
 const amountTotal = (value) => ({ v: value, s: 4 });
-function overview(books, label) {
-  return [
-    ["收支汇总", label],
-    ...balances(books).map((n, i) => [balanceLabels[i], amountTotal(n)]),
-  ];
-}
-export function reportXlsx(kind, books, prefix = "", label = "全部") {
-  if (kind === "summary")
-    return makeWorkbook([["收支汇总", overview(books, "全部年份")]]);
-  if (kind === "all") {
-    const sheets = [["收支总览", overview(books, "全部")]];
-    for (const k of kinds)
-      sheets.push(...bookSheets(k, books[k], books[k], "全部年份"));
-    for (const [length, name] of [
-      [7, "月度汇总"],
-      [4, "年度汇总"],
-    ]) {
-      const groups = new Map();
-      for (const k of kinds)
-        for (const row of books[k]) {
-          const period = row.date.slice(0, length);
-          if (!groups.has(period))
-            groups.set(
-              period,
-              mapBooks(() => []),
-            );
-          groups.get(period)[k].push(row);
-        }
-      const rows = [[name, ...balanceLabels]];
-      for (const period of [...groups.keys()].sort().reverse())
-        rows.push([period, ...balances(groups.get(period))]);
-      rows.push(["合计", ...balances(books).map(amountTotal)]);
-      sheets.push(["收支" + name, rows]);
+function balancePeriods(books, length) {
+  const groups = new Map();
+  for (const kind of kinds) {
+    for (const row of books[kind]) {
+      const period = row.date.slice(0, length);
+      if (!groups.has(period)) groups.set(period, mapBooks(() => []));
+      groups.get(period)[kind].push(row);
     }
+  }
+  const rows = [[length === 4 ? "年度" : "月份", ...balanceLabels]];
+  for (const period of [...groups.keys()].sort().reverse()) {
+    rows.push([period, ...balances(groups.get(period))]);
+  }
+  rows.push(["全部年份合计", ...balances(books).map(amountTotal)]);
+  return rows;
+}
+export function reportXlsx(kind, books) {
+  if (kind === "summary")
+    return makeWorkbook([["收支汇总", balancePeriods(books, 4)]]);
+  if (kind === "all") {
+    const annual = balancePeriods(books, 4);
+    const sheets = [["收支总览", annual]];
+    for (const k of kinds) sheets.push(...bookSheets(k, books[k]));
+    sheets.push(["收支月度汇总", balancePeriods(books, 7)], ["收支年度汇总", annual]);
     return makeWorkbook(sheets);
   }
   key(kind);
-  const selected = books[kind].filter((row) => row.date.startsWith(prefix));
-  return makeWorkbook(bookSheets(kind, books[kind], selected, label));
+  return makeWorkbook(bookSheets(kind, books[kind]));
 }
-function bookSheets(kind, rows, selected, label) {
-  const t = totals(kind, selected);
+function bookSheets(kind, rows) {
+  const t = totals(kind, rows);
   const stats = [
-    ["统计范围", label],
+    ["统计范围", "全部年份"],
     ["记录笔数", t.count],
     ["美元合计", amountTotal(t.usd)],
     ...(kind === "remittance"
@@ -407,14 +396,13 @@ function bookSheets(kind, rows, selected, label) {
           ["银行卡", amountTotal(t.card)],
         ]),
   ];
-  const total = totals(kind, rows);
   const fx = kind === "remittance";
   const details = table(kind, rows);
-  details.push(fx ? ["合计", amountTotal(total.usd), "", amountTotal(total.cny)] : ["合计", amountTotal(total.usd)]);
+  details.push(fx ? ["合计", amountTotal(t.usd), "", amountTotal(t.cny)] : ["合计", amountTotal(t.usd)]);
   function periods(length) {
     return [...grouped(kind, rows, length), [
-      "合计", total.count, amountTotal(total.usd),
-      ...(fx ? [amountTotal(total.cny), Number(total.rate.toFixed(3))] : [amountTotal(total.cash), amountTotal(total.card)]),
+      "合计", t.count, amountTotal(t.usd),
+      ...(fx ? [amountTotal(t.cny), Number(t.rate.toFixed(3))] : [amountTotal(t.cash), amountTotal(t.card)]),
     ]];
   }
   const name = bookNames[kind];

@@ -276,7 +276,7 @@ function exportsPage() {
   ${safetyNote("数据保存说明", "数据仅保存在当前浏览器。Excel 可用于查看和分享。清除网站数据、换浏览器或换手机前，请先选择「全部记录」，下载完整数据备份（JSON），以便恢复账目。")}
   ${nav({ current, all: "全部记录" }, "scope", scope, "导出范围")}
   <section class="panel"><h2>汇总文字</h2>${button("copy", "复制" + title)}</section>
-  <section class="panel"><h2>Excel 表格</h2><p>${all ? "一份 Excel 包含开支、收入、汇款各自的汇总、明细、月度和年度汇总，以及收支总览、收支月度和年度汇总。" : overview ? "包含全部年份的累计收支总览。" : "首页为所选时段汇总，后附全部年份的明细、月度和年度统计。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>
+  <section class="panel"><h2>Excel 表格</h2><p>${all ? "一份 Excel 包含开支、收入、汇款各自的汇总、明细、月度和年度汇总，以及收支总览、收支月度和年度汇总。" : overview ? "逐年列出收支和结余，末行列出全部年份合计。" : "包含本账本全部年份的总合计、逐笔明细、月度汇总和年度汇总。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>
   ${all || !overview ? `<section class="panel"><h2>${backupLabel}备份</h2><p>${backupScope}清除网站数据、重装浏览器或换手机前，请下载 JSON 备份并确认文件已保存。</p><div class="controls">${button("backup", "下载" + backupLabel + "备份")}${button("shareBackup", "分享" + backupLabel + "备份")}</div><label class="file">导入${backupLabel}备份<input type="file" name="file" accept=".json,application/json"></label>${!all ? button("restore", "恢复导入前的记录") : ""}</section>` : ""}
   ${preview ? importPanel() : ""}
   ${!overview || all ? `<div class="clear-section">${button("clear", overview ? "清空三个账本" : "清空" + names[kind] + "记录", `data-clear="${clearTarget}" class="clear-entry"`)}</div>` : ""}`;
@@ -600,14 +600,9 @@ root.addEventListener(
     if (["excel", "backup", "shareExcel", "shareBackup"].includes(a)) {
       const sheet = a.toLowerCase().includes("excel"),
         target = scope === "all" ? "all" : kind;
-      const { title, fileLabel } = exportInfo();
+      const { fileLabel } = exportInfo();
       const blob = sheet
-        ? reportXlsx(
-            target,
-            readBooks(),
-            scope === "all" ? "" : prefix(),
-            title,
-          )
+        ? reportXlsx(target, readBooks())
         : backupFile(target);
       const filename =
         "OpenAA-" +
