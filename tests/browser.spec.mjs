@@ -86,6 +86,7 @@ test("手机端录入、跨年查看、编辑、备份、汇款、汇总与离�
     await click("backup");
     const backup = await downloaded;
     const path = await backup.path();
+    await page.getByText("导入备份", {exact:true}).click();
     await field("file").setInputFiles(path);
     await click("merge");
     await click("back");
@@ -95,6 +96,7 @@ test("手机端录入、跨年查看、编辑、备份、汇款、汇总与离�
     await expect(page.locator(".stats")).toContainText("0 笔");
     await click("back");
     await section("export");
+    await page.getByText("导入备份", {exact:true}).click();
     await click("restore");
     await click("back");
     await section("view");
