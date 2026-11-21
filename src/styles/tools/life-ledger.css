@@ -1,6 +1,6 @@
 :root {
   --text: #172235;
-  --site-width: 1100px;
+  --site-width: 1040px;
   --blue: #245dcc;
   color: var(--text);
   font-family:
@@ -15,7 +15,9 @@
   box-sizing: border-box;
 }
 body {
-  margin: 0;
+  width: 100%;
+  max-width: var(--site-width);
+  margin: 0 auto;
 }
 button,
 input,
@@ -62,8 +64,9 @@ summary:focus-visible {
   border-color: var(--blue);
   color: var(--blue);
 }
-.ledger-content {
-  max-width: 736px;
+.ledger-content,
+.ledger-guide {
+  max-width: 1000px;
   margin: 0 auto;
   padding: 32px 20px 70px;
 }
@@ -366,7 +369,7 @@ legend {
 }
 @media (max-width: 540px) {
   .ledger-content {
-    padding: 24px 15px 56px;
+    padding: 24px 14px 56px;
   }
   .home-card {
     padding: 18px 16px;
@@ -482,4 +485,40 @@ legend {
 .clear-dialog .danger {
   color: white;
   background: #9b2937;
+}
+
+.expense-safety-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid #fde68a;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%);
+  color: #92400e;
+  padding: 12px;
+  margin: 12px 0;
+  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.08);
+}
+.expense-safety-note svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #d97706;
+}
+.expense-safety-note strong {
+  display: block;
+  color: #78350f;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.expense-safety-note p {
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .ledger-content, .ledger-guide { padding-inline: 14px; }
 }

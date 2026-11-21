@@ -1,7 +1,6 @@
 .ledger-guide {
-  max-width: 736px;
   margin: 0 auto;
-  padding: 28px 20px 64px;
+  padding-block: 28px 64px;
   line-height: 1.7;
 }
 .ledger-guide a { color: #245dcc; text-underline-offset: .2em; }

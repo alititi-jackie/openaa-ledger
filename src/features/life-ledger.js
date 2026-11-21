@@ -97,6 +97,9 @@ function nav(labels, attr, current, title) {
     )
     .join("")}</nav>`;
 }
+function safetyNote(title, message) {
+  return `<div class="expense-safety-note" role="note" aria-label="${title}"><svg aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg><div><strong>${title}</strong><p>${message}</p></div></div>`;
+}
 function home() {
   const subtitles = {
     form:
@@ -117,7 +120,7 @@ function home() {
     )
     .join(
       "",
-    )}</div>${button("install", "添加到手机主屏幕", `class="install-entry" ${isInstalled() ? "hidden" : ""}`)}<small class="install-tip">添加后，点桌面上的「生活账本」就能记一笔。</small><p class="storage-note">账目仅保存在当前浏览器。清除网站数据或换手机前，请先下载备份。 <a href="./guide/">使用说明</a></p>`;
+    )}</div>${button("install", "添加到手机主屏幕", `class="install-entry" ${isInstalled() ? "hidden" : ""}`)}<small class="install-tip">添加后，使用「生活账本」就更方便。</small>${safetyNote("数据安全说明", "OpenAA 重视用户隐私与数据安全。本工具不会上传、存储或同步任何记录到服务器，所有数据仅保存在您当前使用的浏览器中。清理缓存、清除网站数据、重装浏览器或更换设备前，请先导出 Excel 或数据备份。")}<p class="storage-note">账目仅保存在当前浏览器。清除网站数据或换手机前，请先下载备份。 <a href="./guide/">使用说明</a></p>`;
 }
 const input = (name, label, type, value, extra = "") =>
   `<label>${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
@@ -270,6 +273,7 @@ function exportsPage() {
     : "包含全部年份的" + names[kind] + "记录。";
   const clearTarget = overview ? "all" : kind;
   return `<h1>${overview ? "收支总览" : names[kind]}导出／分享</h1>
+  ${safetyNote("数据保存说明", "数据仅保存在当前浏览器。Excel 可用于查看和分享。清除网站数据、换浏览器或换手机前，请先选择「全部记录」，下载完整数据备份（JSON），以便恢复账目。")}
   ${nav({ current, all: "全部记录" }, "scope", scope, "导出范围")}
   <section class="panel"><h2>汇总文字</h2>${button("copy", "复制" + title)}</section>
   <section class="panel"><h2>Excel 表格</h2><p>${all ? "一份 Excel 包含开支、收入、汇款各自的汇总、明细、月度和年度汇总，以及收支总览、收支月度和年度汇总。" : overview ? "仅含所选时段的收支总览。" : "首页为所选时段汇总，后附全部年份的明细、月度和年度统计。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>

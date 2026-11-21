@@ -349,10 +349,12 @@ const balanceLabels = [
   "扣除汇款后结余（美元）",
   "汇款折合人民币",
 ];
+// Workbook style 4 is the bold red total amount style.
+const amountTotal = (value) => ({ v: value, s: 4 });
 function overview(books, label) {
   return [
     ["收支汇总", label],
-    ...balances(books).map((n, i) => [balanceLabels[i], n]),
+    ...balances(books).map((n, i) => [balanceLabels[i], amountTotal(n)]),
   ];
 }
 export function reportXlsx(kind, books, prefix = "", label = "全部") {
@@ -383,7 +385,7 @@ export function reportXlsx(kind, books, prefix = "", label = "全部") {
       const rows = [[name, ...balanceLabels]];
       for (const period of [...groups.keys()].sort().reverse())
         rows.push([period, ...balances(groups.get(period))]);
-      rows.push(["合计", ...balances(books)]);
+      rows.push(["合计", ...balances(books).map(amountTotal)]);
       sheets.push(["收支" + name, rows]);
     }
     return makeWorkbook(sheets);
@@ -396,25 +398,25 @@ function bookSheets(kind, rows, selected, label) {
   const stats = [
     ["统计范围", label],
     ["记录笔数", t.count],
-    ["美元合计", t.usd],
+    ["美元合计", amountTotal(t.usd)],
     ...(kind === "remittance"
       ? [
-          ["人民币合计", t.cny],
+          ["人民币合计", amountTotal(t.cny)],
           ["平均汇率", +t.rate.toFixed(3)],
         ]
       : [
-          ["现金", t.cash],
-          ["银行卡", t.card],
+          ["现金", amountTotal(t.cash)],
+          ["银行卡", amountTotal(t.card)],
         ]),
   ];
   const total = totals(kind, rows);
   const fx = kind === "remittance";
   const details = table(kind, rows);
-  details.push(fx ? ["合计", total.usd, "", total.cny] : ["合计", total.usd]);
+  details.push(fx ? ["合计", amountTotal(total.usd), "", amountTotal(total.cny)] : ["合计", amountTotal(total.usd)]);
   function periods(length) {
     return [...grouped(kind, rows, length), [
-      "合计", total.count, total.usd,
-      ...(fx ? [total.cny, Number(total.rate.toFixed(3))] : [total.cash, total.card]),
+      "合计", total.count, amountTotal(total.usd),
+      ...(fx ? [amountTotal(total.cny), Number(total.rate.toFixed(3))] : [amountTotal(total.cash), amountTotal(total.card)]),
     ]];
   }
   const name = bookNames[kind];
