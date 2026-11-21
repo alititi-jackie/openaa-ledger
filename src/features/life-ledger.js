@@ -249,7 +249,7 @@ function exportInfo() {
     return {
       title: periodName() + "收支总览",
       pairs: balancePairs(periodBooks(), filter().mode),
-      fileLabel: periodName() + "收支总览",
+      fileLabel: "全部年份收支总览",
     };
   return {
     title: periodName() + names[kind] + "汇总",
@@ -276,7 +276,7 @@ function exportsPage() {
   ${safetyNote("数据保存说明", "数据仅保存在当前浏览器。Excel 可用于查看和分享。清除网站数据、换浏览器或换手机前，请先选择「全部记录」，下载完整数据备份（JSON），以便恢复账目。")}
   ${nav({ current, all: "全部记录" }, "scope", scope, "导出范围")}
   <section class="panel"><h2>汇总文字</h2>${button("copy", "复制" + title)}</section>
-  <section class="panel"><h2>Excel 表格</h2><p>${all ? "一份 Excel 包含开支、收入、汇款各自的汇总、明细、月度和年度汇总，以及收支总览、收支月度和年度汇总。" : overview ? "仅含所选时段的收支总览。" : "首页为所选时段汇总，后附全部年份的明细、月度和年度统计。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>
+  <section class="panel"><h2>Excel 表格</h2><p>${all ? "一份 Excel 包含开支、收入、汇款各自的汇总、明细、月度和年度汇总，以及收支总览、收支月度和年度汇总。" : overview ? "包含全部年份的累计收支总览。" : "首页为所选时段汇总，后附全部年份的明细、月度和年度统计。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>
   ${all || !overview ? `<section class="panel"><h2>${backupLabel}备份</h2><p>${backupScope}清除网站数据、重装浏览器或换手机前，请下载 JSON 备份并确认文件已保存。</p><div class="controls">${button("backup", "下载" + backupLabel + "备份")}${button("shareBackup", "分享" + backupLabel + "备份")}</div><label class="file">导入${backupLabel}备份<input type="file" name="file" accept=".json,application/json"></label>${!all ? button("restore", "恢复导入前的记录") : ""}</section>` : ""}
   ${preview ? importPanel() : ""}
   ${!overview || all ? `<div class="clear-section">${button("clear", overview ? "清空三个账本" : "清空" + names[kind] + "记录", `data-clear="${clearTarget}" class="clear-entry"`)}</div>` : ""}`;

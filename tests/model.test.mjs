@@ -137,6 +137,8 @@ test("report scopes and 15-sheet full workbook", async () => {
     );
   const summary = await xml("summary");
   assert.ok(!summary.includes("午餐"));
+  assert.ok(summary.includes("全部年份"));
+  assert.ok(summary.includes("<v>715.47</v>"));
   assert.equal((summary.match(/<sheet name=/g) || []).length, 1);
   const single = await xml("expense");
   assert.equal((single.match(/<sheet name=/g) || []).length, 4);

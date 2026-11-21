@@ -358,11 +358,8 @@ function overview(books, label) {
   ];
 }
 export function reportXlsx(kind, books, prefix = "", label = "全部") {
-  const selected = mapBooks((k) =>
-    books[k].filter((row) => row.date.startsWith(prefix || "")),
-  );
   if (kind === "summary")
-    return makeWorkbook([["收支汇总", overview(selected, label)]]);
+    return makeWorkbook([["收支汇总", overview(books, "全部年份")]]);
   if (kind === "all") {
     const sheets = [["收支总览", overview(books, "全部")]];
     for (const k of kinds)
@@ -391,7 +388,8 @@ export function reportXlsx(kind, books, prefix = "", label = "全部") {
     return makeWorkbook(sheets);
   }
   key(kind);
-  return makeWorkbook(bookSheets(kind, books[kind], selected[kind], label));
+  const selected = books[kind].filter((row) => row.date.startsWith(prefix));
+  return makeWorkbook(bookSheets(kind, books[kind], selected, label));
 }
 function bookSheets(kind, rows, selected, label) {
   const t = totals(kind, selected);
