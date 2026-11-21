@@ -364,7 +364,7 @@ export function reportXlsx(kind, books, prefix = "", label = "全部") {
   if (kind === "all") {
     const sheets = [["收支总览", overview(books, "全部")]];
     for (const k of kinds)
-      sheets.push([bookNames[k] + "明细", table(k, books[k])]);
+      sheets.push(...bookSheets(k, books[k], books[k], "全部年份"));
     for (const [length, name] of [
       [7, "月度汇总"],
       [4, "年度汇总"],
@@ -383,12 +383,16 @@ export function reportXlsx(kind, books, prefix = "", label = "全部") {
       const rows = [[name, ...balanceLabels]];
       for (const period of [...groups.keys()].sort().reverse())
         rows.push([period, ...balances(groups.get(period))]);
-      sheets.push([name, rows]);
+      rows.push(["合计", ...balances(books)]);
+      sheets.push(["收支" + name, rows]);
     }
     return makeWorkbook(sheets);
   }
   key(kind);
-  const t = totals(kind, selected[kind]);
+  return makeWorkbook(bookSheets(kind, books[kind], selected[kind], label));
+}
+function bookSheets(kind, rows, selected, label) {
+  const t = totals(kind, selected);
   const stats = [
     ["统计范围", label],
     ["记录笔数", t.count],
@@ -403,10 +407,19 @@ export function reportXlsx(kind, books, prefix = "", label = "全部") {
           ["银行卡", t.card],
         ]),
   ];
-  return makeWorkbook([
-    ["所选时段汇总", stats],
-    ["全部记录", table(kind, books[kind])],
-    ["月度记录", grouped(kind, books[kind], 7)],
-    ["年度记录", grouped(kind, books[kind], 4)],
-  ]);
+  const total = totals(kind, rows);
+  const fx = kind === "remittance";
+  const details = table(kind, rows);
+  details.push(fx ? ["合计", total.usd, "", total.cny] : ["合计", total.usd]);
+  function periods(length) {
+    return [...grouped(kind, rows, length), [
+      "合计", total.count, total.usd,
+      ...(fx ? [total.cny, Number(total.rate.toFixed(3))] : [total.cash, total.card]),
+    ]];
+  }
+  const name = bookNames[kind];
+  return [
+    [name + "汇总", stats], [name + "明细", details],
+    [name + "月度汇总", periods(7)], [name + "年度汇总", periods(4)],
+  ];
 }

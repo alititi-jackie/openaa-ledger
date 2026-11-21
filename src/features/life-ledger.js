@@ -263,7 +263,7 @@ function exportsPage() {
   const all = scope === "all",
     overview = kind === "summary";
   const current = overview ? "收支总览" : names[kind] + "记录";
-  const { title, pairs, fileLabel } = exportInfo();
+  const { title, fileLabel } = exportInfo();
   const backupLabel = all ? "完整" : names[kind];
   const backupScope = all
     ? "包含开支、收入和汇款三个账本的全部年份。"
@@ -271,8 +271,8 @@ function exportsPage() {
   const clearTarget = overview ? "all" : kind;
   return `<h1>${overview ? "收支总览" : names[kind]}导出／分享</h1>
   ${nav({ current, all: "全部记录" }, "scope", scope, "导出范围")}
-  <section class="panel"><h2>${title}</h2>${statGrid(pairs)}<div class="controls">${button("copy", "复制汇总")}${button("shareText", "分享汇总")}</div></section>
-  <section class="panel"><h2>Excel 表格</h2><p>${all ? "全部年份的总览、三个账本明细、月度和年度汇总。" : overview ? "仅含所选时段的收支总览。" : "首页为所选时段汇总，后附全部年份的明细、月度和年度统计。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>
+  <section class="panel"><h2>汇总文字</h2>${button("copy", "复制" + title)}</section>
+  <section class="panel"><h2>Excel 表格</h2><p>${all ? "一份 Excel 包含开支、收入、汇款各自的汇总、明细、月度和年度汇总，以及收支总览、收支月度和年度汇总。" : overview ? "仅含所选时段的收支总览。" : "首页为所选时段汇总，后附全部年份的明细、月度和年度统计。"}</p><div class="controls">${button("excel", "下载" + fileLabel + " Excel")}${button("shareExcel", "分享" + fileLabel + " Excel")}</div></section>
   ${all || !overview ? `<section class="panel"><h2>${backupLabel}备份</h2><p>${backupScope}清除网站数据、重装浏览器或换手机前，请下载 JSON 备份并确认文件已保存。</p><div class="controls">${button("backup", "下载" + backupLabel + "备份")}${button("shareBackup", "分享" + backupLabel + "备份")}</div><label class="file">导入${backupLabel}备份<input type="file" name="file" accept=".json,application/json"></label>${!all ? button("restore", "恢复导入前的记录") : ""}</section>` : ""}
   ${preview ? importPanel() : ""}
   ${!overview || all ? `<div class="clear-section">${button("clear", overview ? "清空三个账本" : "清空" + names[kind] + "记录", `data-clear="${clearTarget}" class="clear-entry"`)}</div>` : ""}`;
@@ -587,17 +587,9 @@ root.addEventListener(
       confirmClear(b.dataset.clear);
       return;
     }
-    if (a === "copy" || a === "shareText") {
+    if (a === "copy") {
       const { title, pairs } = exportInfo();
       const text = [title, ...pairs.map(([k, v]) => k + "　" + v)].join("\n");
-      if (a === "shareText" && navigator.share) {
-        try {
-          await navigator.share({ title, text });
-          return;
-        } catch (error) {
-          if (error.name === "AbortError") return;
-        }
-      }
       showCopyResult(await copyText(text), text, title);
       return;
     }

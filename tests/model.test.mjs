@@ -129,7 +129,7 @@ test("full backup validates each book and bulk writes roll back failures", () =>
   clearBooks(["income", "remittance"]);
   assert.equal(m.size, 0);
 });
-test("report scopes and six-sheet full workbook", async () => {
+test("report scopes and 15-sheet full workbook", async () => {
   const books = { expense: [expense], income: [], remittance: [remit] };
   const xml = async (kind) =>
     new TextDecoder().decode(
@@ -141,6 +141,9 @@ test("report scopes and six-sheet full workbook", async () => {
   const single = await xml("expense");
   assert.equal((single.match(/<sheet name=/g) || []).length, 4);
   const all = await xml("all");
-  assert.equal((all.match(/<sheet name=/g) || []).length, 6);
+  assert.equal((all.match(/<sheet name=/g) || []).length, 15);
+  for (const name of ["开支", "收入", "汇款"])
+    for (const suffix of ["汇总", "明细", "月度汇总", "年度汇总"])
+      assert.ok(all.includes('sheet name="' + name + suffix + '"'));
   assert.ok(all.includes("2026-11"));
 });
