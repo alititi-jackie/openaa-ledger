@@ -43,7 +43,7 @@ summary:focus-visible {
 }
 #ledger .book {
   position: sticky;
-  top: 0;
+  top: var(--ledger-header-height);
   z-index: 10;
   background: white;
   display: flex;
@@ -534,3 +534,5 @@ legend {
 @media (max-width: 760px) {
   .ledger-title { padding: 14px 14px 12px; font-size: 22px; }
 }
+
+.ledger-title p { margin: 6px 0 0; font-size: 15px; line-height: 1.5; color: #526174; font-weight: 400; }

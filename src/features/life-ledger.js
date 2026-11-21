@@ -329,7 +329,7 @@ function importPanel() {
 }
 function render() {
   root.innerHTML =
-    '<div class="ledger-title">OpenAA 生活收支账本</div>' +
+    '<div class="ledger-title">OpenAA 生活收支账本<p>记下每一笔收支和汇款，随时看看还剩多少。</p></div>' +
     nav(names, "book", kind, "账本导航") +
     `<div class="ledger-content">${page !== "home" ? button("back", kind === "summary" ? "‹ 返回收支总览" : "‹ 返回" + names[kind] + "账本", 'class="back"') : ""}${page === "export" ? exportsPage() : kind === "summary" ? summary() : { home, view, form, export: exportsPage }[page]()}</div><output id="site-status" role="status" aria-live="polite"></output>`;
   if (page === "form") markTarget();
