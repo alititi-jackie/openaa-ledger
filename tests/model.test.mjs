@@ -8,6 +8,7 @@ import {
   save,
   load,
   importRows,
+  mergeRows,
   restore,
   xlsx,
   csv,
@@ -150,4 +151,26 @@ test("report scopes and 15-sheet full workbook", async () => {
     for (const suffix of ["汇总", "明细", "月度汇总", "年度汇总"])
       assert.ok(all.includes('sheet name="' + name + suffix + '"'));
   assert.ok(all.includes("2026-11"));
+});
+
+test("reordered legacy backups preserve duplicate occurrences and native backups require IDs", () => {
+  const a = { date: "2025-12-30", amount: 10, category: "餐饮", payment: "现金" };
+  const b = { ...a, amount: 25 };
+  const previous = [{ ...parseBackup("expense", [a]).rows[0], id: "legacy-expense-0-2025-12-30" }];
+  const incoming = () => parseBackup("expense", [b, a, a]).rows;
+  const merged = mergeRows(previous, incoming());
+  assert.deepEqual(merged.map(r => r.amount), [10, 25, 10]);
+  assert.deepEqual(mergeRows(merged, incoming()), merged);
+  const native = backup("expense", [expense]);
+  delete native.records[0].id;
+  assert.throws(() => parseBackup("expense", native), /编号/);
+});
+
+test("year with remittances only has a negative USD balance in summary and full export", async () => {
+  const books = { expense: [], income: [], remittance: [remit] };
+  for (const kind of ["summary", "all"]) {
+    const xml = await reportXlsx(kind, books).text();
+    assert.ok(xml.includes('<c r="F2" t="n"><v>-100</v>'));
+    assert.ok(xml.includes('<c r="G2" t="n"><v>715.47</v>'));
+  }
 });

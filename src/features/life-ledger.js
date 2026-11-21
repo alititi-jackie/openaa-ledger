@@ -323,12 +323,13 @@ function confirmClear(target) {
 }
 function importPanel() {
   if (preview.books)
-    return `<section class="panel" id="import-preview"><h2>完整备份导入预览</h2><p>${counts(preview.books)}</p><p>合并会保留已有记录并跳过重复编号。覆盖会替换三个账本，包括备份中为零笔的账本。</p><div class="controls">${button("merge", "合并导入")}${button("replace", "覆盖三个账本")}${button("abort", "取消")}</div></section>`;
+    return `<section class="panel" id="import-preview"><h2>完整备份导入预览</h2><p>${escape(preview.filename)}</p><p>${counts(preview.books)}</p><p>合并会保留已有记录并跳过重复编号。覆盖会替换三个账本，包括备份中为零笔的账本。</p><div class="controls">${button("merge", "合并导入")}${button("replace", "覆盖三个账本")}${button("abort", "取消")}</div></section>`;
   const pick = preview.legacy && kind === "remittance";
-  return `<section class="panel" id="import-preview"><h2>导入预览</h2><p>可导入 ${preview.rows.length} 笔。${preview.skipped ? "已排除 " + preview.skipped + " 笔减去记录。" : ""}</p>${pick ? "<p>勾选确实属于汇款的记录。</p>" : ""}<div class="preview-list">${preview.rows.map((r, i) => `<label>${pick ? `<input type="checkbox" data-import="${i}">` : ""}${escape(r.date)} · ${money(r.amount)} ${escape(r.note)}</label>`).join("")}</div><div class="controls">${button("merge", "合并导入")}${button("replace", "覆盖导入")}${button("abort", "取消")}</div></section>`;
+  return `<section class="panel" id="import-preview"><h2>${names[kind]}导入预览</h2><p>${escape(preview.filename)}</p><p>可导入 ${preview.rows.length} 笔。${preview.skipped ? "已排除 " + preview.skipped + " 笔减去记录。" : ""}</p>${pick ? "<p>勾选确实属于汇款的记录。</p>" : ""}<div class="preview-list">${preview.rows.map((r, i) => `<label>${pick ? `<input type="checkbox" data-import="${i}">` : ""}${escape(r.date)} · ${money(r.amount)} ${escape(r.note)}</label>`).join("")}</div><div class="controls">${button("merge", "合并导入")}${button("replace", "覆盖导入")}${button("abort", "取消")}</div></section>`;
 }
 function render() {
   root.innerHTML =
+    '<div class="ledger-title">OpenAA 生活收支账本</div>' +
     nav(names, "book", kind, "账本导航") +
     `<div class="ledger-content">${page !== "home" ? button("back", kind === "summary" ? "‹ 返回收支总览" : "‹ 返回" + names[kind] + "账本", 'class="back"') : ""}${page === "export" ? exportsPage() : kind === "summary" ? summary() : { home, view, form, export: exportsPage }[page]()}</div><output id="site-status" role="status" aria-live="polite"></output>`;
   if (page === "form") markTarget();
@@ -402,10 +403,11 @@ root.addEventListener("focusout", (e) => {
   )
     return;
   const digits = e.target.name === "rate" ? 3 : 2;
-  const v = roundFx(Number(e.target.value), digits);
+  const original = e.target.value;
+  const v = roundFx(Number(original), digits);
   if (Number.isFinite(v)) {
     e.target.value = v.toFixed(digits);
-    if (e.target.name !== target) calc(e.target.form);
+    if (e.target.name !== target && v !== Number(original)) calc(e.target.form);
     updateRateWarning(e.target.form);
   }
 });
@@ -503,7 +505,10 @@ root.addEventListener(
       filter()[field.name] = field.value;
       render();
     }
-    if (field.name === "file" && field.files[0]) {
+    if (field.name === "file") {
+      preview = null;
+      root.querySelector("#import-preview")?.remove();
+      if (!field.files[0]) return;
       const current = kind,
         initialScope = scope,
         file = field.files[0];
@@ -515,6 +520,7 @@ root.addEventListener(
         current !== kind ||
         scope !== initialScope ||
         page !== "export" ||
+        field.files[0] !== file ||
         !field.isConnected
       )
         return;
@@ -522,7 +528,7 @@ root.addEventListener(
         scope === "all"
           ? { books: parseFullBackup(contents) }
           : parseBackup(kind, contents);
-      preview = parsed;
+      preview = { ...parsed, filename: file.name };
       render();
       root.querySelector("#import-preview").scrollIntoView();
     }
@@ -602,7 +608,7 @@ root.addEventListener(
         target = scope === "all" ? "all" : kind;
       const { fileLabel } = exportInfo();
       const blob = sheet
-        ? reportXlsx(target, readBooks())
+        ? reportXlsx(target, target === "all" || target === "summary" ? readBooks() : { [target]: load(target) })
         : backupFile(target);
       const filename =
         "OpenAA-" +
@@ -631,10 +637,11 @@ root.addEventListener(
       return;
     }
     if (a === "merge" || a === "replace") {
+      if (!preview) return;
       if (preview.books) {
         if (
           a === "replace" &&
-          !confirm("确认用完整备份覆盖三个账本的全部记录？")
+          !confirm(`确认用「${preview.filename}」覆盖三个账本？备份包含${counts(preview.books)}。`)
         )
           return;
         importBooks(preview.books, a);
@@ -652,7 +659,7 @@ root.addEventListener(
       }
       if (
         a === "replace" &&
-        !confirm("用所选备份覆盖当前全部" + names[kind] + "记录？")
+        !confirm(`确认用「${preview.filename}」的 ${rows.length} 笔记录覆盖全部${names[kind]}记录？`)
       )
         return;
       importRows(kind, rows, a);
