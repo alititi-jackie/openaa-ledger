@@ -114,3 +114,30 @@ test("手机端录入、跨年查看、编辑、备份、汇款、汇总与离�
     await browser.close();
   }
 });
+
+test("三种显示版本、刷新记忆和导入范围不受隐藏导航影响", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 740 });
+  await page.goto(origin);
+  const modes = page.locator(".ledger-mode [data-display-mode]");
+  await expect(modes).toHaveCount(3);
+  await expect(page.locator('[data-display-mode="full"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".book [data-book]")).toHaveCount(4);
+  const widths = await modes.evaluateAll(elements => elements.map(el => el.getBoundingClientRect()));
+  expect(widths[0].top).toBe(widths[1].top);
+  expect(widths[1].top).toBe(widths[2].top);
+  expect(widths[2].right).toBeLessThanOrEqual(375);
+  await page.locator('[data-display-mode="expense"]').click();
+  await expect(page.locator(".book")).toHaveCount(0);
+  await expect(page.locator(".ledger-content h1")).toHaveText("开支账本");
+  await page.reload();
+  await expect(page.locator('[data-display-mode="expense"]')).toHaveAttribute("aria-pressed", "true");
+  await page.locator('[data-display-mode="remittance"]').click();
+  await expect(page.locator(".ledger-content h1")).toHaveText("汇款账本");
+  await page.locator('[data-page="export"]').click();
+  await expect(page.getByText("导入备份", { exact: true })).toBeVisible();
+  await page.locator('[data-action="back"]').click();
+  await page.locator('[data-display-mode="full"]').click();
+  await expect(page.locator(".book [data-book]")).toHaveCount(4);
+  await expect(page.locator(".ledger-content h1")).toHaveText("汇款账本");
+  await expect(page.getByRole("heading", { name: "常见问题" })).toBeVisible();
+});
