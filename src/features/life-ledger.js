@@ -339,6 +339,12 @@ function confirmClear(target) {
   const label = bookLabel(target);
   dialog.setAttribute("aria-labelledby", "clear-title");
   const totalCount = kinds.reduce((n, k) => n + initial[k].length, 0);
+  if (!totalCount) {
+    showFeedback(
+      "暂无" + (target === "all" ? "记录" : names[target] + "记录") + "，无需清空",
+    );
+    return;
+  }
   dialog.innerHTML = `<h2 id="clear-title">清空${target === "all" ? "三个账本" : names[target] + "记录"}？</h2><p>${target === "all" ? `将删除此浏览器中全部年份的记录，共 ${totalCount} 笔（${counts(initial)}）。` : `将删除此浏览器中全部年份的${names[target]}记录，共 ${initial[target].length} 笔。其他账本保留。`}对应的导入前记录也会删除。清空后无法撤销。建议先下载 Excel 备份，并确认文件已保存。</p><button type="button" class="clear-download" data-download>下载备份</button><p role="status"></p><form method="dialog" class="clear-actions"><button autofocus value="cancel" class="clear-cancel">取消</button><button class="clear-confirm" value="clear">确认清空</button></form>`;
   dialog.querySelector("[data-download]").onclick = guarded(() => {
     download(
