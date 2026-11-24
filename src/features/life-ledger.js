@@ -338,7 +338,8 @@ function confirmClear(target) {
   dialog.className = "transfer-confirm clear-dialog";
   const label = bookLabel(target);
   dialog.setAttribute("aria-labelledby", "clear-title");
-  dialog.innerHTML = `<h2 id="clear-title">清空${label}${target === "all" ? "" : "全部记录"}？</h2><p>将删除此浏览器中全部年份的记录（${counts(initial)}），以及对应账本的导入前记录。${target === "all" ? "" : "其他账本保留。"}收支总览会重新计算。</p><p>如需以后恢复，请先下载 Excel 备份，并确认文件已保存。</p><div class="controls"><button type="button" data-download>下载${target === "all" ? "完整账本" : names[target] + "记录"} Excel</button></div><p role="status"></p><form method="dialog" class="controls"><button autofocus value="cancel">取消</button><button class="danger" value="clear">确认清空${label}</button></form>`;
+  const totalCount = kinds.reduce((n, k) => n + initial[k].length, 0);
+  dialog.innerHTML = `<h2 id="clear-title">清空${target === "all" ? "三个账本" : names[target] + "记录"}？</h2><p>${target === "all" ? `将删除此浏览器中全部年份的记录，共 ${totalCount} 笔（${counts(initial)}）。` : `将删除此浏览器中全部年份的${names[target]}记录，共 ${initial[target].length} 笔。其他账本保留。`}对应的导入前记录也会删除。清空后无法撤销。建议先下载 Excel 备份，并确认文件已保存。</p><button type="button" class="clear-download" data-download>下载备份</button><p role="status"></p><form method="dialog" class="clear-actions"><button autofocus value="cancel" class="clear-cancel">取消</button><button class="clear-confirm" value="clear">确认清空</button></form>`;
   dialog.querySelector("[data-download]").onclick = guarded(() => {
     download(
       target === "all"
