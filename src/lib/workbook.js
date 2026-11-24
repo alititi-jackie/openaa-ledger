@@ -1,4 +1,6 @@
-// Spreadsheet writer adapted from openaa-tools/src/features/expense-record.js.
+// Hand-rolled XLSX writer (stored zip, inline strings). Produces the same
+// workbook layout and visible styling as the OpenAA account ledger export:
+// bold blue headers, bold colored totals, no fills or borders.
 function escapeXml(value) {
   return String(value ?? "").replace(
     /[<>&"']/g,
@@ -15,7 +17,7 @@ function escapeXml(value) {
 function utf8Bytes(str) {
   return new TextEncoder().encode(str);
 }
-const EXPENSE_CRC_TABLE = (() => {
+const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
     let c = n;
@@ -27,7 +29,7 @@ const EXPENSE_CRC_TABLE = (() => {
 function crc32(bytes) {
   let c = 0xffffffff;
   for (let i = 0; i < bytes.length; i++)
-    c = EXPENSE_CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
 function writeU16(arr, value) {
@@ -46,7 +48,7 @@ function concatBytes(parts) {
   const out = new Uint8Array(total);
   let offset = 0;
   parts.forEach((part) => {
-    out.set(part, offset);
+    part.set ? out.set(part, offset) : part.forEach((b, i) => (out[offset + i] = b));
     offset += part.length;
   });
   return out;
@@ -120,6 +122,54 @@ function excelCol(index) {
   }
   return col;
 }
+// Cell style indexes, mirroring the account export's visible styling.
+export const ST = {
+  plain: 0, // default text/number
+  header: 1, // bold, blue 1976D2
+  boldRed: 2, // bold B42318 (expense / negative net)
+  boldBlue: 3, // bold 1976D2 (income / positive net)
+  boldBlack: 4, // bold 000000 (zero net)
+  date: 5, // plain with yyyy-mm-dd number format
+  title: 6, // bold 14pt (template guide heading)
+};
+function xlsxStylesXml() {
+  const font = (color, bold = false, size = 11) =>
+    `<font>${bold ? "<b/>" : ""}<sz val="${size}"/><name val="Calibri"/><color rgb="FF${color}"/></font>`;
+  const fonts = [
+    font("000000"),
+    font("1976D2", true),
+    font("B42318", true),
+    font("000000", true),
+    font("000000", true, 14),
+  ];
+  // [fontId, numFmtId] per ST index.
+  const xfs = [
+    [0, 0],
+    [1, 0],
+    [2, 0],
+    [1, 0],
+    [3, 0],
+    [0, 164],
+    [4, 0],
+  ]
+    .map(
+      ([fontId, numFmtId]) =>
+        `<xf numFmtId="${numFmtId}" applyNumberFormat="1" fontId="${fontId}" fillId="0" borderId="0" xfId="0" applyFont="1"/>`,
+    )
+    .join("");
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts>' +
+    `<fonts count="${fonts.length}">${fonts.join("")}</fonts>` +
+    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    `<cellXfs count="7">${xfs}</cellXfs>` +
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+    "</styleSheet>"
+  );
+}
 function cellXml(cell, r, c) {
   const obj =
     cell && typeof cell === "object" && !Array.isArray(cell)
@@ -142,13 +192,47 @@ function cellXml(cell, r, c) {
     "</c>"
   );
 }
-function sheetXmlAdvanced(rows) {
+function sheetXml(sheet) {
+  const cols = (sheet.cols ?? [])
+    .map((col, i) =>
+      col
+        ? '<col min="' +
+          (i + 1) +
+          '" max="' +
+          (i + 1) +
+          '"' +
+          (col.width ? ' width="' + col.width + '" customWidth="1"' : "") +
+          (col.hidden ? ' hidden="1"' : "") +
+          "/>"
+        : "",
+    )
+    .join("");
+  const views = sheet.freeze
+    ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft"/></sheetView></sheetViews>'
+    : "";
+  const validations = sheet.validations?.length
+    ? '<dataValidations count="' +
+      sheet.validations.length +
+      '">' +
+      sheet.validations
+        .map(
+          (dv) =>
+            '<dataValidation type="list" allowBlank="0" showErrorMessage="1" sqref="' +
+            dv.ref +
+            '"><formula1>"' +
+            escapeXml(dv.values.join(",")) +
+            '"</formula1></dataValidation>',
+        )
+        .join("") +
+      "</dataValidations>"
+    : "";
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-    '<cols><col min="1" max="1" width="15" customWidth="1"/><col min="2" max="2" width="14" customWidth="1"/><col min="3" max="3" width="14" customWidth="1"/><col min="4" max="4" width="14" customWidth="1"/><col min="5" max="9" width="24" customWidth="1"/></cols>' +
+    views +
+    (cols ? "<cols>" + cols + "</cols>" : "") +
     "<sheetData>" +
-    rows
+    sheet.rows
       .map(
         (row, rIdx) =>
           '<row r="' +
@@ -158,56 +242,19 @@ function sheetXmlAdvanced(rows) {
           "</row>",
       )
       .join("") +
-    "</sheetData></worksheet>"
+    "</sheetData>" +
+    validations +
+    "</worksheet>"
   );
 }
-export const sheetStyle = {
-  plain: 0, header: 1, expense: 2, income: 3,
-  total: 4, expenseTotal: 5, incomeTotal: 6, bold: 7,
-  usdNegative: 8, usdPositive: 9, usdZero: 10, usdNeutral: 11,
-  usdNegativeTotal: 12, usdPositiveTotal: 13, usdZeroTotal: 14, usdNeutralTotal: 15,
-  cnyNegative: 16, cnyPositive: 17, cnyZero: 18, cnyNeutral: 19,
-  cnyNegativeTotal: 20, cnyPositiveTotal: 21, cnyZeroTotal: 22, cnyNeutralTotal: 23, rate: 24,
-};
-
-export function currencyCell(value, currency, tone = "Neutral", total = false) {
-  if (tone === "Net") tone = value < 0 ? "Negative" : value > 0 ? "Positive" : "Zero";
-  return { v: value, s: sheetStyle[currency + tone + (total ? "Total" : "")] };
-}
-function xlsxStylesXml() {
-  const font = (color, bold = false) =>
-    `<font>${bold ? "<b/>" : ""}<sz val="11"/><name val="Calibri"/><color rgb="FF${color}"/></font>`;
-  const fonts = [
-    font("334155"), font("FFFFFF", true), font("B42318"), font("067647"),
-    font("334155", true), font("B42318", true), font("067647", true), font("000000"), font("000000", true),
-  ];
-  // Style indexes follow sheetStyle. Fill 2 is the header and fill 3 marks totals.
-  const formats = [[0,0], [1,2], [2,0], [3,0], [4,3], [5,3], [6,3], [4,0],
-    [2,0,164], [3,0,164], [7,0,164], [0,0,164],
-    [5,3,164], [6,3,164], [8,3,164], [4,3,164],
-    [2,0,165], [3,0,165], [7,0,165], [0,0,165],
-    [5,3,165], [6,3,165], [8,3,165], [4,3,165], [0,0,166]]
-    .map(([fontId, fillId, numFmtId = 0]) => `<xf numFmtId="${numFmtId}" applyNumberFormat="1" fontId="${fontId}" fillId="${fillId}" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>`);
-  return (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    '<numFmts count="3"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00;-&quot;$&quot;#,##0.00;&quot;$&quot;0.00"/><numFmt numFmtId="165" formatCode="&quot;¥&quot;#,##0.00;-&quot;¥&quot;#,##0.00;&quot;¥&quot;0.00"/><numFmt numFmtId="166" formatCode="0.000"/></numFmts>' +
-    `<fonts count="${fonts.length}">${fonts.join("")}</fonts>` +
-    '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF2563EB"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/><bgColor indexed="64"/></patternFill></fill></fills>' +
-    '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right><top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border></borders>' +
-    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    `<cellXfs count="${formats.length}">${formats.join("")}</cellXfs>` +
-    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
-    "</styleSheet>"
-  );
-}
+// sheets: [{ name, rows, cols?, freeze?, validations? }]
+// rows hold primitives or { v, s } cells (s = an ST index).
 export function makeWorkbook(sheets) {
   const ns = "http://schemas.openxmlformats.org";
   const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.";
   const header = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-  const parts = sheets.map(([name, rows], i) => ({
-    name,
-    rows,
+  const parts = sheets.map((sheet, i) => ({
+    ...sheet,
     id: i + 1,
     path: "worksheets/sheet" + (i + 1) + ".xml",
   }));
@@ -297,7 +344,7 @@ export function makeWorkbook(sheets) {
     { name: "xl/styles.xml", content: xlsxStylesXml() },
     ...parts.map((p) => ({
       name: "xl/" + p.path,
-      content: sheetXmlAdvanced(p.rows),
+      content: sheetXml(p),
     })),
   ];
   return new Blob([makeZip(files)], { type: mime + "sheet" });

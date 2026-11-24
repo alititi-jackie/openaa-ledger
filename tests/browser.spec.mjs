@@ -83,7 +83,7 @@ test("手机端录入、跨年查看、编辑、备份、汇款、汇总与离�
     await click("copy");
     await expect(page.locator("#site-status")).toContainText("已复制");
     const downloaded = page.waitForEvent("download");
-    await click("backup");
+    await click("excel");
     const backup = await downloaded;
     const path = await backup.path();
     await page.getByText("导入备份", {exact:true}).click();
