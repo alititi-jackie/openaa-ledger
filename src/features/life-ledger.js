@@ -393,7 +393,15 @@ function render() {
       const parsed = await parseLedgerXlsx(await file.arrayBuffer());
       const rows = parsed.books[error.kind];
       if (!rows) throw Error("请选择包含" + label + "记录的 Excel 文件。");
-      if (!confirm("确认用 " + rows.length + " 笔记录恢复" + label + "账本？")) return;
+      if (
+        !(await askConfirm({
+          title: "恢复" + label + "账本？",
+          body: "将用文件中的 " + rows.length + " 笔记录替换当前" + label + "账本。",
+          confirmLabel: "恢复",
+          danger: true,
+        }))
+      )
+        return;
       recoverBook(error.kind, error.raw, rows);
       render();
     });
@@ -530,6 +538,28 @@ function confirmTransfer(messages) {
     dialog.showModal();
   });
 }
+function askConfirm({ title, body, confirmLabel, danger = false }) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "transfer-confirm ask-confirm";
+  dialog.setAttribute("aria-labelledby", "ask-confirm-title");
+  dialog.innerHTML = `<h2 id="ask-confirm-title"></h2><p></p><form method="dialog" class="controls"><button value="cancel" autofocus>取消</button><button value="ok" class="${danger ? "danger" : "primary"}"></button></form>`;
+  dialog.querySelector("h2").textContent = title;
+  dialog.querySelector("p").textContent = body;
+  dialog.querySelector('[value="ok"]').textContent = confirmLabel;
+  document.body.append(dialog);
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      "close",
+      () => {
+        const accepted = dialog.returnValue === "ok";
+        dialog.remove();
+        resolve(accepted);
+      },
+      { once: true },
+    );
+    dialog.showModal();
+  });
+}
 root.addEventListener(
   "submit",
   guarded(async (e) => {
@@ -543,7 +573,14 @@ root.addEventListener(
     });
     const unusualExpense =
       kind === "expense" && (row.amount < 1 || row.amount > 10000);
-    if (unusualExpense && !confirm("金额或汇率超出常用范围，是否仍然保存？"))
+    if (
+      unusualExpense &&
+      !(await askConfirm({
+        title: "金额超出常用范围",
+        body: "金额或汇率超出常用范围，是否仍然保存？",
+        confirmLabel: "仍然保存",
+      }))
+    )
       return;
     if (kind === "remittance") {
       const warnings = [];
@@ -665,7 +702,28 @@ root.addEventListener(
       go("form");
       return;
     }
-    if (a === "delete" && confirm("删除这笔" + names[kind] + "？")) {
+    if (a === "delete") {
+      const row = load(kind).find((r) => r.id === id);
+      const tag =
+        kind === "remittance"
+          ? row?.type === "subtract"
+            ? "冲正"
+            : "汇出"
+          : row?.category || "";
+      const summary = row
+        ? [row.date, money(Math.abs(row.amount)), tag, row.note || ""]
+            .filter(Boolean)
+            .join(" · ")
+        : "";
+      if (
+        !(await askConfirm({
+          title: "删除这笔" + names[kind] + "？",
+          body: (summary ? summary + "。" : "") + "删除后无法撤销。",
+          confirmLabel: "删除",
+          danger: true,
+        }))
+      )
+        return;
       save(
         kind,
         load(kind).filter((r) => r.id !== id),
@@ -714,7 +772,16 @@ root.addEventListener(
       }
       return;
     }
-    if (a === "restore" && confirm("将" + names[b.dataset.restore] + "账本恢复到上次导入前？")) {
+    if (a === "restore") {
+      if (
+        !(await askConfirm({
+          title: "恢复" + names[b.dataset.restore] + "账本？",
+          body: "将把" + names[b.dataset.restore] + "账本恢复到上次导入前的状态，导入后新增或修改的记录会被替换。",
+          confirmLabel: "恢复",
+          danger: true,
+        }))
+      )
+        return;
       restore(b.dataset.restore);
       preview = null;
       render();
@@ -732,7 +799,12 @@ root.addEventListener(
         throw new Error("分卷文件请用合并导入。");
       if (
         a === "replace" &&
-        !confirm(`确认用「${preview.filename}」覆盖文件中包含的账本（${counts(preview.books)}）？`)
+        !(await askConfirm({
+          title: "覆盖导入？",
+          body: `将用「${preview.filename}」覆盖文件中包含的账本（${counts(preview.books)}）。覆盖后无法撤销。`,
+          confirmLabel: "覆盖导入",
+          danger: true,
+        }))
       )
         return;
       const before = JSON.stringify(readBooks());

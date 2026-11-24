@@ -411,6 +411,11 @@ legend {
   white-space: pre-line;
   line-height: 1.6;
 }
+.ask-confirm .danger {
+  background: #fff5f5;
+  border-color: #dbb8bd;
+  color: #992c3a;
+}
 .install-entry {
   margin-top: 12px;
   min-height: 44px;
