@@ -123,6 +123,17 @@ test("Excel round trip preserves records, including remittance reversal", async 
   assert.equal(back.cny, -350);
 });
 
+test("same-day records export newest first", async () => {
+  const first = { ...expense, id: "first", note: "先记" };
+  const second = { ...expense, id: "second", note: "后记" };
+  const xml = await reportXlsx("expense", { expense: [first, second] }).text();
+  assert.ok(xml.indexOf("后记") < xml.indexOf("先记"));
+  const parsed = await parseLedgerXlsx(
+    new Uint8Array(await reportXlsx("expense", { expense: [first, second] }).arrayBuffer()),
+  );
+  assert.deepEqual(parsed.books.expense.map((r) => r.id), ["second", "first"]);
+});
+
 test("template parses empty; filled template rows dedupe on re-import", async () => {
   mockStorage();
   const empty = await parseLedgerXlsx(

@@ -161,9 +161,11 @@ function currentMonthCard() {
   const rows = load(kind).filter(row => row.date.startsWith(month));
   if (!rows.length)
     return `<section><h2>本月数据</h2><p class="panel month-empty">本月暂无记录，<button type="button" class="month-add" data-action="month-add">去记一笔</button></p></section>`;
-  const recent = [...rows]
-    .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")))
-    .slice(0, 3);
+  const recent = rows
+    .map((row, index) => [row, index])
+    .sort((a, b) => b[0].date.localeCompare(a[0].date) || b[1] - a[1])
+    .slice(0, 3)
+    .map(([row]) => row);
   return `<section><h2>本月数据</h2>${statGrid(stats(kind, rows))}<h3>本月最近三笔</h3><section class="panel list">${details(recent, false)}</section></section>`;
 }
 

@@ -252,11 +252,12 @@ function paint(role, value) {
 }
 function detailSheets(kind, rows) {
   const fx = kind === "remittance";
-  const sorted = [...rows].sort(
-    (a, b) =>
-      b.date.localeCompare(a.date) ||
-      String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
-  );
+  // Newest first: by date, then by reverse storage order (records are
+  // appended in creation order and carry no creation timestamp).
+  const sorted = rows
+    .map((row, index) => [row, index])
+    .sort((a, b) => b[0].date.localeCompare(a[0].date) || b[1] - a[1])
+    .map(([row]) => row);
   const sheets = [];
   for (let offset = 0; offset < Math.max(1, sorted.length); offset += 10000) {
     const suffix = offset ? "-" + (1 + offset / 10000) : "";
